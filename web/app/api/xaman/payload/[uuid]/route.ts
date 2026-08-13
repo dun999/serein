@@ -10,7 +10,10 @@ import {
 const XAMAN_API = "https://xumm.app/api/v1/platform";
 const XRPL_TESTNET_RPC = "https://s.altnet.rippletest.net:51234/";
 
-export async function GET(_request: Request, context: RouteContext<"/api/xaman/payload/[uuid]">) {
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ uuid: string }> },
+) {
   const apiKey = process.env.XAMAN_API_KEY?.trim();
   const apiSecret = process.env.XAMAN_API_SECRET?.trim();
   if (!apiKey || !apiSecret) {

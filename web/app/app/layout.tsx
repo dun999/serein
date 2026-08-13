@@ -7,7 +7,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { CovenantProvider } from "@/lib/covenant-provider";
 import { TreasuryProvider } from "@/lib/treasury-provider";
 
-export default function AppLayout({ children }: LayoutProps<"/app">) {
+export default function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <CovenantProvider>
       <TreasuryProvider>
