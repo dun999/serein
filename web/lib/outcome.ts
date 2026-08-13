@@ -24,6 +24,34 @@ export function explainOutcome(error: unknown): Outcome {
   const message = error instanceof Error
     ? ((error as { shortMessage?: string }).shortMessage ?? error.message)
     : "Something went wrong.";
+  // viem keeps the decoded custom error out of shortMessage, so a bare revert
+  // reads as "The contract function ... reverted." Search the full error too.
+  const revert = error instanceof Error ? `${message} ${error.message}` : message;
+
+  if (/NothingPending/.test(revert)) {
+    return {
+      kind: "error",
+      detail: "Nothing is scheduled yet. Start the delay first, then return here once it has elapsed.",
+    };
+  }
+  if (/TimelockNotElapsed/.test(revert)) {
+    return {
+      kind: "error",
+      detail: "The timelock has not elapsed yet. This action becomes available once the countdown reaches zero.",
+    };
+  }
+  if (/VaultActive\(\)/.test(revert)) {
+    return { kind: "error", detail: "This action needs the vault to be locked first." };
+  }
+  if (/VaultLocked\(\)/.test(revert)) {
+    return { kind: "error", detail: "The vault is locked. Unlock it before moving funds." };
+  }
+  if (/IncompleteRedemption/.test(revert)) {
+    return {
+      kind: "error",
+      detail: "FAssets could not redeem the whole balance in one step. Redemption settles in whole lots, so a remainder below one lot cannot be redeemed to XRP; withdraw it to your wallet instead.",
+    };
+  }
 
   if (/user rejected|user denied|request rejected|4001/i.test(message)) {
     return { kind: "error", detail: "You rejected the request in your wallet. No action was executed." };

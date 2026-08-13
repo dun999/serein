@@ -49,6 +49,10 @@ export interface PrivateVaultState {
   policyVersion: bigint;
   xrplPayout: string;
   timelockSeconds: number;
+  /** Unix second the scheduled recovery becomes executable; 0 when none is pending. */
+  recoveryAt: bigint;
+  /** Unix second a scheduled unlock can be confirmed; 0 when none is pending. */
+  unlockAt: bigint;
 }
 
 export interface DirectMintSettings {
@@ -104,8 +108,10 @@ export class PrivateVaultClient {
   }
 
   async getState(vault: Address): Promise<PrivateVaultState> {
-    const [owner, guardian, tee, status, balance, nonce, commitment, version, payout, timelock] =
-      await Promise.all([
+    const [
+      owner, guardian, tee, status, balance, nonce, commitment, version, payout, timelock,
+      recoveryAt, unlockAt,
+    ] = await Promise.all([
         this.read(vault, "owner"),
         this.read(vault, "guardian"),
         this.read(vault, "tee"),
@@ -116,6 +122,8 @@ export class PrivateVaultClient {
         this.read(vault, "policyVersion"),
         this.read(vault, "xrplPayout"),
         this.read(vault, "timelockSeconds"),
+        this.read(vault, "recoveryAt"),
+        this.read(vault, "unlockAt"),
       ]);
     return {
       address: vault,
@@ -129,6 +137,8 @@ export class PrivateVaultClient {
       policyVersion: version as bigint,
       xrplPayout: payout as string,
       timelockSeconds: Number(timelock),
+      recoveryAt: BigInt(recoveryAt as bigint),
+      unlockAt: BigInt(unlockAt as bigint),
     };
   }
 
@@ -402,8 +412,21 @@ export class PrivateVaultClient {
     return this.send(vault, vaultAbi, "lock", []);
   }
 
+  /** Starts the timelock that lets {@link confirmUnlock} return a locked vault to active. */
+  async scheduleUnlock(vault: Address): Promise<Hex> {
+    return this.send(vault, vaultAbi, "scheduleUnlock", []);
+  }
+
+  async confirmUnlock(vault: Address): Promise<Hex> {
+    return this.send(vault, vaultAbi, "confirmUnlock", []);
+  }
+
   async scheduleRecovery(vault: Address): Promise<Hex> {
     return this.send(vault, vaultAbi, "scheduleRecovery", []);
+  }
+
+  async cancelRecovery(vault: Address): Promise<Hex> {
+    return this.send(vault, vaultAbi, "cancelRecovery", []);
   }
 
   async executeRecovery(vault: Address): Promise<Hex> {
