@@ -19,6 +19,7 @@ import {
 import type { Address, Hex } from "viem";
 
 import { useCovenant } from "@/lib/covenant-provider";
+import { LEGACY_VAULT_FACTORY_ADDRESSES } from "@/lib/chain";
 import { explainOutcome } from "@/lib/outcome";
 
 export type Outcome =
@@ -114,10 +115,25 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     const owner = address;
     void (async () => {
-      const vaults = await vaultClient.vaultsOf(owner).catch(() => []);
+      const discovered = await Promise.all([
+        vaultClient.vaultsOf(owner).catch(() => []),
+        ...LEGACY_VAULT_FACTORY_ADDRESSES.map((factory) =>
+          vaultClient.vaultsOf(owner, factory).catch(() => []),
+        ),
+      ]);
+      const vaults = [...new Map(
+        discovered.flat().map((vault) => [vault.toLowerCase(), vault]),
+      ).values()];
       if (cancelled) return;
       setOwned({ owner, vaults });
-      const latest = vaults.at(-1);
+      const states = await Promise.all(
+        vaults.map((vault) => vaultClient.getState(vault).catch(() => null)),
+      );
+      if (cancelled) return;
+      const latest = states
+        .filter((state) => state && state.status !== "destroyed")
+        .sort((left, right) => Number((right?.balance ?? 0n) - (left?.balance ?? 0n)))
+        .at(0)?.address ?? vaults.at(-1);
       if (!latest) return;
       setSelection({ owner, vault: latest });
       await refresh(latest);

@@ -2,6 +2,7 @@
 import { PUBLIC_DEPLOYMENT, isDeploymentConfigured } from "@/lib/deployment";
 
 export const VAULT_FACTORY_ADDRESS = PUBLIC_DEPLOYMENT.contracts.vaultFactory;
+export const LEGACY_VAULT_FACTORY_ADDRESSES = PUBLIC_DEPLOYMENT.contracts.legacyVaultFactories;
 export const INSTRUCTION_SENDER_ADDRESS = PUBLIC_DEPLOYMENT.contracts.instructionSender;
 export const FCC_TEE_ADDRESS = PUBLIC_DEPLOYMENT.fcc.teeMachine;
 export const FCC_PROXY_URL = PUBLIC_DEPLOYMENT.fcc.proxyUrl;

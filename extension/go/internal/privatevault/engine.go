@@ -21,6 +21,7 @@ const (
 	OperationRedeem
 	AuthorizationWindow = 5 * time.Minute
 	MaxPriceAge         = time.Hour
+	MaxPriceFutureSkew  = 30 * time.Second
 )
 
 type Request struct {
@@ -184,7 +185,7 @@ func (e *Engine) Authorize(ctx context.Context, req Request) (*Result, error) {
 	}
 
 	value, decimals, priceTimestamp := snapshot.PriceValue, snapshot.PriceDecimals, snapshot.PriceTimestamp
-	if priceTimestamp > chainTimestamp || now.Sub(time.Unix(int64(priceTimestamp), 0)) > MaxPriceAge {
+	if !priceTimestampIsFresh(chainTimestamp, priceTimestamp) {
 		return nil, fmt.Errorf("FTSOv2 price is stale")
 	}
 	amountUSD, err := priceUSD(req.Amount.Uint64(), value, decimals)
@@ -254,6 +255,15 @@ func priceUSD(amount, value uint64, decimals uint8) (uint64, error) {
 		return 0, fmt.Errorf("USD amount is out of range")
 	}
 	return result.Uint64(), nil
+}
+
+func priceTimestampIsFresh(chainTimestamp, priceTimestamp uint64) bool {
+	futureSkew := uint64(MaxPriceFutureSkew / time.Second)
+	maxAge := uint64(MaxPriceAge / time.Second)
+	if priceTimestamp > chainTimestamp {
+		return priceTimestamp-chainTimestamp <= futureSkew
+	}
+	return chainTimestamp-priceTimestamp <= maxAge
 }
 
 func exceedsDailyCap(spent *big.Int, amount, cap uint64) bool {

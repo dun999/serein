@@ -80,6 +80,7 @@ contract CovenantVault {
 
     bytes21 public constant XRP_USD_FEED_ID = bytes21(0x015852502f55534400000000000000000000000000);
     uint64 public constant MAX_PRICE_AGE = 1 hours;
+    uint64 public constant MAX_PRICE_FUTURE_SKEW = 30 seconds;
     uint8 internal constant TEE_STATUS_PRODUCTION = 2;
     uint256 public constant FIRST_PUBLIC_EXTENSION_ID = 0x10000;
     uint32 public constant MIN_TIMELOCK = 1 days;
@@ -404,11 +405,7 @@ contract CovenantVault {
         }
         _requireTrustedTee(tee);
 
-        (uint256 currentUsd, uint64 currentTimestamp) = _toUsd(amount);
-        if (currentTimestamp != priceTimestamp) {
-            revert PriceChanged(priceTimestamp, currentTimestamp);
-        }
-        if (currentUsd != amountUsd) revert AmountUsdChanged(amountUsd, currentUsd);
+        _validatePrice(amount, amountUsd, priceTimestamp);
 
         bytes32 digest = authorizationDigest(
             operation, to, destinationHash, amount, amountUsd, priceTimestamp, forNonce, forPolicyVersion, deadline
@@ -540,7 +537,8 @@ contract CovenantVault {
     function _toUsd(uint256 amount) internal returns (uint256 amountUsd, uint64 timestamp) {
         (uint256 value, int8 decimals, uint64 feedTimestamp) = ftso.getFeedById(XRP_USD_FEED_ID);
         if (
-            value == 0 || decimals < 0 || decimals > 18 || feedTimestamp > block.timestamp
+            value == 0 || decimals < 0 || decimals > 18
+                || feedTimestamp > block.timestamp + MAX_PRICE_FUTURE_SKEW
                 || block.timestamp > feedTimestamp + MAX_PRICE_AGE
         ) {
             revert StalePrice(feedTimestamp);
@@ -548,6 +546,29 @@ contract CovenantVault {
         uint256 scale = 10 ** uint256(uint8(decimals));
         amountUsd = (amount * value * 1e8) / (1e6 * scale);
         timestamp = feedTimestamp;
+    }
+
+    // FCC signs the price observation used for the private policy decision.
+    // FTSO can publish a newer observation between that decision and the
+    // wallet transaction, so exact timestamp/value equality would make a
+    // valid authorization randomly unexecutable. Keep the signed quote fresh
+    // and require the latest on-chain quote to remain within 1%.
+    function _validatePrice(uint256 amount, uint256 amountUsd, uint64 priceTimestamp) internal {
+        if (
+            priceTimestamp > block.timestamp + MAX_PRICE_FUTURE_SKEW
+                || block.timestamp > priceTimestamp + MAX_PRICE_AGE
+        ) {
+            revert StalePrice(priceTimestamp);
+        }
+        (uint256 currentUsd, uint64 currentTimestamp) = _toUsd(amount);
+        if (currentTimestamp < priceTimestamp) {
+            revert PriceChanged(priceTimestamp, currentTimestamp);
+        }
+        uint256 difference = currentUsd > amountUsd ? currentUsd - amountUsd : amountUsd - currentUsd;
+        uint256 allowedDifference = (amountUsd * 100) / 10_000;
+        if (amountUsd == 0 || difference > allowedDifference) {
+            revert AmountUsdChanged(amountUsd, currentUsd);
+        }
     }
 
     // ---------------------------------------------------------------------

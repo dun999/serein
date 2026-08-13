@@ -94,9 +94,9 @@ export class PrivateVaultClient {
     return { vault, transaction: hash };
   }
 
-  async vaultsOf(owner: Address): Promise<readonly Address[]> {
+  async vaultsOf(owner: Address, factory: Address = this.options.factory): Promise<readonly Address[]> {
     return this.options.publicClient.readContract({
-      address: this.options.factory,
+      address: factory,
       abi: vaultFactoryAbi,
       functionName: "vaultsOf",
       args: [owner],

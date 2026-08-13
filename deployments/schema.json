@@ -15,9 +15,14 @@
     "contracts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["vaultFactory", "instructionSender", "fxrp", "assetManager", "ftsoV2", "teeMachineRegistry"],
+      "required": ["vaultFactory", "legacyVaultFactories", "instructionSender", "fxrp", "assetManager", "ftsoV2", "teeMachineRegistry"],
       "properties": {
         "vaultFactory": { "$ref": "#/$defs/address" },
+        "legacyVaultFactories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/address" },
+          "uniqueItems": true
+        },
         "instructionSender": { "$ref": "#/$defs/address" },
         "fxrp": { "$ref": "#/$defs/address" },
         "assetManager": { "$ref": "#/$defs/address" },

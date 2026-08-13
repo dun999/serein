@@ -439,7 +439,21 @@ contract CovenantVaultTest is Test {
         assertEq(vault.balance(), 0);
     }
 
-    function test_PriceEpochIsBoundToTheAuthorization() public {
+    function test_FreshAuthorizationSurvivesANewerFtsoObservation() public {
+        uint64 deadline = uint64(block.timestamp + 5 minutes);
+        bytes memory auth = _spendAuthorization(merchant, 20e6, deadline, teeKey);
+        uint64 oldTimestamp = ftso.timestamp();
+        vm.warp(block.timestamp + 1);
+        ftso.setPrice(500_001, oldTimestamp + 1);
+
+        vm.prank(owner);
+        vault.spend(merchant, 20e6, 10e8, oldTimestamp, 0, 1, deadline, auth);
+
+        assertEq(fxrp.balanceOf(merchant), 20e6);
+        assertEq(vault.nonce(), 1);
+    }
+
+    function test_PriceMoveBeyondOnePercentRequiresFreshAuthorization() public {
         uint64 deadline = uint64(block.timestamp + 5 minutes);
         bytes memory auth = _spendAuthorization(merchant, 20e6, deadline, teeKey);
         uint64 oldTimestamp = ftso.timestamp();
@@ -447,12 +461,12 @@ contract CovenantVaultTest is Test {
         ftso.setPrice(600_000, oldTimestamp + 1);
 
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(CovenantVault.PriceChanged.selector, oldTimestamp, oldTimestamp + 1));
+        vm.expectRevert(abi.encodeWithSelector(CovenantVault.AmountUsdChanged.selector, 10e8, 12e8));
         vault.spend(merchant, 20e6, 10e8, oldTimestamp, 0, 1, deadline, auth);
     }
 
     function test_FuturePriceTimestampIsRejected() public {
-        uint64 futureTimestamp = uint64(block.timestamp + 1);
+        uint64 futureTimestamp = uint64(block.timestamp + vault.MAX_PRICE_FUTURE_SKEW() + 1);
         ftso.setPrice(500_000, futureTimestamp);
         uint64 deadline = uint64(block.timestamp + 5 minutes);
         bytes memory auth = _spendAuthorization(merchant, 20e6, deadline, teeKey);
@@ -460,6 +474,18 @@ contract CovenantVaultTest is Test {
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(CovenantVault.StalePrice.selector, futureTimestamp));
         vault.spend(merchant, 20e6, 10e8, futureTimestamp, 0, 1, deadline, auth);
+    }
+
+    function test_SmallFtsoClockSkewDoesNotBlockExecution() public {
+        uint64 futureTimestamp = uint64(block.timestamp + 3);
+        ftso.setPrice(500_000, futureTimestamp);
+        uint64 deadline = uint64(block.timestamp + 5 minutes);
+        bytes memory auth = _spendAuthorization(merchant, 20e6, deadline, teeKey);
+
+        vm.prank(owner);
+        vault.spend(merchant, 20e6, 10e8, futureTimestamp, 0, 1, deadline, auth);
+
+        assertEq(fxrp.balanceOf(merchant), 20e6);
     }
 
     function test_ZeroPriceCannotBypassPolicyAccounting() public {

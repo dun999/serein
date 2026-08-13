@@ -9,6 +9,7 @@ export interface PublicDeployment {
   explorerUrl: string;
   contracts: {
     vaultFactory: `0x${string}`;
+    legacyVaultFactories: `0x${string}`[];
     instructionSender: `0x${string}`;
     fxrp: `0x${string}`;
     assetManager: `0x${string}`;
@@ -57,6 +58,7 @@ export function buildPublicDeployment(
     explorerUrl: manifest.explorerUrl,
     contracts: {
       vaultFactory: address(overrides.vaultFactory, release?.contracts.vaultFactory ?? null),
+      legacyVaultFactories: (release?.contracts.legacyVaultFactories ?? []).map((value) => address(undefined, value)),
       instructionSender: address(overrides.instructionSender, release?.contracts.instructionSender ?? null),
       fxrp: address(overrides.fxrp, release?.contracts.fxrp ?? null),
       assetManager: address(overrides.assetManager, release?.contracts.assetManager ?? null),

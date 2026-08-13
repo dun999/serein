@@ -3,6 +3,7 @@ package privatevault
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -48,6 +49,22 @@ func TestPriceRejectsZeroAndUnsupportedDecimals(t *testing.T) {
 	}
 	if _, err := priceUSD(1_000_000, 1, 19); err == nil {
 		t.Fatal("unsupported FTSO decimals were accepted")
+	}
+}
+
+func TestPriceTimestampAllowsBoundedFtsoClockSkew(t *testing.T) {
+	const chainTimestamp = uint64(1_700_000_000)
+	if !priceTimestampIsFresh(chainTimestamp, chainTimestamp+3) {
+		t.Fatal("normal FTSO clock skew was rejected")
+	}
+	if priceTimestampIsFresh(chainTimestamp, chainTimestamp+uint64(MaxPriceFutureSkew/time.Second)+1) {
+		t.Fatal("excessive future FTSO timestamp was accepted")
+	}
+	if !priceTimestampIsFresh(chainTimestamp, chainTimestamp-uint64(MaxPriceAge/time.Second)) {
+		t.Fatal("price exactly at the maximum age was rejected")
+	}
+	if priceTimestampIsFresh(chainTimestamp, chainTimestamp-uint64(MaxPriceAge/time.Second)-1) {
+		t.Fatal("stale price was accepted")
 	}
 }
 

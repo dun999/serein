@@ -6,7 +6,10 @@
   "rpcUrl": "https://coston2-api.flare.network/ext/C/rpc",
   "explorerUrl": "https://coston2-explorer.flare.network",
   "contracts": {
-    "vaultFactory": "0x6a91918f35b60039Dd034005F984e4a2152eE060",
+    "vaultFactory": "0xd0Ed02fF17f00144CB1693F95a4D77a307f7649f",
+    "legacyVaultFactories": [
+      "0x6a91918f35b60039Dd034005F984e4a2152eE060"
+    ],
     "instructionSender": "0x468a86Dd6B18Fd5871fFBBdc05FF48635156A962",
     "fxrp": "0x0b6A3645c240605887a5532109323A3E12273dc7",
     "assetManager": "0xc1Ca88b937d0b528842F95d5731ffB586f4fbDFA",
@@ -20,7 +23,7 @@
     "imageDigest": "sha256:c0eed6bcef7a653506df5ff2a109cf44916b95b8cea467de65816632b41acc4a"
   },
   "evidence": {
-    "deployedAt": "2026-08-13T11:44:40.421Z",
+    "deployedAt": "2026-08-13T11:56:00.000Z",
     "webUrl": "https://serein.finance",
     "demoVideoUrl": null
   }
