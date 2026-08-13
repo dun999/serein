@@ -2,7 +2,7 @@
 
 `@covenant/sdk` is the TypeScript library the Serein app is built on. Everything the website can do, the SDK can do — the site has no private endpoint of its own.
 
-It lives in [`packages/sdk`](https://github.com/dun999/serein/tree/main/packages/sdk).
+It has its own repository: [dun999/covenant-sdk](https://github.com/dun999/covenant-sdk).
 
 ## What it handles
 
@@ -94,6 +94,7 @@ The distinction matters: a refusal is not an outage, and telling users to retry 
 ## Building
 
 ```bash
-pnpm --filter @covenant/sdk build
-pnpm --filter @covenant/sdk test
+npm install
+npm run build
+npm test
 ```

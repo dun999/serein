@@ -16,7 +16,7 @@ export const PRIVATE_VAULT_CONFIGURED = isDeploymentConfigured(PUBLIC_DEPLOYMENT
 
 export const REPO_URL = "https://github.com/dun999/serein";
 export const DOCS_URL = "https://docs.serein.finance";
-export const SDK_URL = `${REPO_URL}/tree/main/packages/sdk`;
+export const SDK_URL = "https://github.com/dun999/covenant-sdk";
 
 export const COSTON2 = {
   chainId: PUBLIC_DEPLOYMENT.chainId,
