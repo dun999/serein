@@ -191,14 +191,20 @@ func (e *Engine) Authorize(ctx context.Context, req Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if amountUSD > policy.PerTxCap {
-		return nil, fmt.Errorf("per-transaction limit exceeded")
-	}
-	if exceedsDailyCap(state.SpentTodayUSD, amountUSD, policy.DailyCap) {
-		return nil, fmt.Errorf("daily limit exceeded")
+	if enforcesSpendingCaps(req.Operation) {
+		if amountUSD > policy.PerTxCap {
+			return nil, fmt.Errorf("per-transaction limit exceeded")
+		}
+		if exceedsDailyCap(state.SpentTodayUSD, amountUSD, policy.DailyCap) {
+			return nil, fmt.Errorf("daily limit exceeded")
+		}
 	}
 
-	if amountUSD > policy.StepUpThreshold {
+	// Redemption cannot redirect value: the vault binds it to the timelocked
+	// XRPL payout address. It is therefore an exit, not merchant spending. Do
+	// not let a low merchant cap make FAssets' minimum redemption impossible,
+	// but always require the enrolled passkey for this exit path.
+	if requiresStepUp(req.Operation, amountUSD, policy.StepUpThreshold) {
 		challenge, err := stepUpDigest(e.chainID, req, state.Nonce, state.PolicyVersion)
 		if err != nil {
 			return nil, err
@@ -255,6 +261,14 @@ func exceedsDailyCap(spent *big.Int, amount, cap uint64) bool {
 		return true
 	}
 	return spent.Uint64() > cap-amount
+}
+
+func enforcesSpendingCaps(operation uint8) bool {
+	return operation != OperationRedeem
+}
+
+func requiresStepUp(operation uint8, amountUSD, threshold uint64) bool {
+	return operation == OperationRedeem || amountUSD > threshold
 }
 
 func authorizationDigest(

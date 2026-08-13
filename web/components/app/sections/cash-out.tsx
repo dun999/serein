@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { useCovenant } from "@/lib/covenant-provider";
-import { requireWithinPerPaymentLimit } from "@/lib/policy-preflight";
 import { useTreasury } from "@/lib/treasury-provider";
 
 export function CashOutSection() {
@@ -63,8 +62,9 @@ export function CashOutSection() {
           <CardHeader>
             <CardTitle>Redeem FXRP to native XRP</CardTitle>
             <CardDescription>
-              FCC authorizes the amount under the same confidential budget, then FAssets burns
-              FXRP and creates the XRPL settlement request.
+              Every redemption requires your enrolled passkey. It is not limited by merchant
+              payment caps because the destination is permanently restricted to your saved XRPL
+              address.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -82,17 +82,13 @@ export function CashOutSection() {
                   if (minimumRedeem !== null && amount < minimumRedeem) {
                     throw new Error(`FAssets currently requires at least ${formatFxrp(minimumRedeem)} FXRP`);
                   }
-                  const quote = await vaultClient.quote(vault, amount);
-                  requireWithinPerPaymentLimit(quote.amountUsd, snap.policy?.perTxCapUsd);
-                  const threshold = snap.policy ? BigInt(snap.policy.stepUpThresholdUsd) : 0n;
-                  const needsPasskey = quote.amountUsd > threshold;
-                  if (needsPasskey && !snap.passkey) {
+                  if (!snap.passkey) {
                     throw new Error("This redemption requires the passkey enrolled with the private policy");
                   }
                   const result = await vaultClient.redeemToXrp({
                     vault,
                     amount,
-                    passkey: needsPasskey ? (snap.passkey ?? undefined) : undefined,
+                    passkey: snap.passkey,
                   });
                   return {
                     kind: "done",

@@ -50,3 +50,21 @@ func TestPriceRejectsZeroAndUnsupportedDecimals(t *testing.T) {
 		t.Fatal("unsupported FTSO decimals were accepted")
 	}
 }
+
+func TestRedemptionIsAnAlwaysPasskeyProtectedExit(t *testing.T) {
+	if enforcesSpendingCaps(OperationRedeem) {
+		t.Fatal("redemption was incorrectly treated as merchant spending")
+	}
+	if !requiresStepUp(OperationRedeem, 1, ^uint64(0)) {
+		t.Fatal("redemption did not require a passkey below the normal threshold")
+	}
+	if !enforcesSpendingCaps(OperationSpend) || !enforcesSpendingCaps(OperationWithdraw) {
+		t.Fatal("spend or withdraw bypassed the confidential spending caps")
+	}
+	if requiresStepUp(OperationSpend, 100, 100) {
+		t.Fatal("a spend exactly at the threshold unexpectedly required step-up")
+	}
+	if !requiresStepUp(OperationSpend, 101, 100) {
+		t.Fatal("a spend above the threshold did not require step-up")
+	}
+}
