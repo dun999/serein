@@ -29,6 +29,13 @@ export type Outcome =
       instructionHash?: Hex;
       authorization?: FccAuthorization | FccAdminAuthorization;
     }
+  | {
+      kind: "ready";
+      message: string;
+      instructionHash?: Hex;
+      authorization?: FccAuthorization | FccAdminAuthorization;
+      hash?: Hex;
+    }
   | { kind: "refused"; rule: string; detail: string; instructionHash?: Hex }
   | { kind: "error"; detail: string; instructionHash?: Hex };
 

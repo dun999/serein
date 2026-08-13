@@ -62,6 +62,11 @@ test("an approved payment shows the FCC-to-vault evidence timeline", async ({ pa
   await page.getByLabel("Amount", { exact: true }).fill("1");
   await page.getByRole("button", { name: "Request private authorization" }).click();
 
+  await expect(page.getByText("Authorization ready", { exact: true })).toBeVisible();
+  await expect(page.getByText("Waiting for your separate Execute click", { exact: false })).toBeVisible();
+  expect(await sentTransactionCount(page)).toBe(1);
+  await page.getByRole("button", { name: "Execute payment" }).click();
+
   await expect(page.getByText("Complete", { exact: true })).toBeVisible();
   await expect(page.getByText("FCC instruction", { exact: true })).toBeVisible();
   await expect(page.getByText("Private policy decision", { exact: true })).toBeVisible();
@@ -74,13 +79,31 @@ test("vault destruction requires passkey confirmation before the terminal transa
   await page.goto("/app/cash-out");
   await page.getByRole("button", { name: "Destroy vault", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Permanently destroy this vault?" })).toBeVisible();
-  await page.getByRole("button", { name: "Verify and destroy" }).click();
+  await page.getByRole("button", { name: "Verify passkey" }).click();
 
-  await expect(page.getByText("Passkey verified. The vault is permanently closed", { exact: false })).toBeVisible();
+  await expect(page.getByText("Authorization ready", { exact: true })).toBeVisible();
+  expect(await sentTransactionCount(page)).toBe(1);
+  await page.getByRole("button", { name: "Execute destruction" }).click();
+
+  await expect(page.getByText("The vault is permanently closed", { exact: false })).toBeVisible();
   expect(await sentTransactionCount(page)).toBe(2);
 });
 
-async function installVaultScenario(page: Page, decision: "approved" | "refused" | "admin") {
+test("FXRP redemption waits for a fresh Execute click after FCC approval", async ({ page }) => {
+  await installVaultScenario(page, "redeem");
+  await page.goto("/app/cash-out");
+  await page.getByLabel("Amount to redeem").fill("5");
+  await page.getByRole("button", { name: "Authorize redemption" }).click();
+
+  await expect(page.getByText("Authorization ready", { exact: true })).toBeVisible();
+  expect(await sentTransactionCount(page)).toBe(1);
+  await page.getByRole("button", { name: "Execute redemption" }).click();
+
+  await expect(page.getByText("entered FAssets redemption", { exact: false })).toBeVisible();
+  expect(await sentTransactionCount(page)).toBe(2);
+});
+
+async function installVaultScenario(page: Page, decision: "approved" | "refused" | "admin" | "redeem") {
   await injectWallet(page, "0x72");
   await page.addInitScript(({ vault, recipient, withPasskey }) => {
     localStorage.setItem(`covenant:private-policy:${vault}`, JSON.stringify({
@@ -120,7 +143,7 @@ async function installVaultScenario(page: Page, decision: "approved" | "refused"
         },
       });
     }
-  }, { vault: VAULT, recipient: RECIPIENT, withPasskey: decision === "admin" });
+  }, { vault: VAULT, recipient: RECIPIENT, withPasskey: decision === "admin" || decision === "redeem" });
   await page.route("https://coston2-api.flare.network/**", mockRpc);
   await page.route("https://fcc.test/action/result/**", async (route) => {
     await route.fulfill({
@@ -148,7 +171,8 @@ async function installVaultScenario(page: Page, decision: "approved" | "refused"
                 amountUsd: "100000000",
                 priceTimestamp: "1700000000",
                 policyVersion: "1",
-                operation: 0,
+                operation: decision === "redeem" ? 2 : 0,
+                ...(decision === "redeem" ? { xrplPayout: "rPEPPER7kfTD9w2To4CQk6UCfuHM9c6GDY" } : {}),
               },
             },
           }),
@@ -221,6 +245,9 @@ function ethCall(call: { to: string; data: `0x${string}` }): `0x${string}` {
   if (selector === toFunctionSelector("requestSpend(address,address,uint256,bytes)")) {
     return encodeFunctionResult({ abi: instructionSenderAbi, functionName: "requestSpend", result: INSTRUCTION_ID });
   }
+  if (selector === toFunctionSelector("requestRedeem(address,uint256,bytes)")) {
+    return encodeFunctionResult({ abi: instructionSenderAbi, functionName: "requestRedeem", result: INSTRUCTION_ID });
+  }
   if (selector === toFunctionSelector("requestAdmin(address,uint8,bytes32,bytes)")) {
     return encodeFunctionResult({ abi: instructionSenderAbi, functionName: "requestAdmin", result: INSTRUCTION_ID });
   }
@@ -239,6 +266,9 @@ function ethCall(call: { to: string; data: `0x${string}` }): `0x${string}` {
     return encodeAbiParameters([{ type: "uint256" }], [5_000_000n]);
   }
   if (selector === toFunctionSelector("spend(address,uint256,uint256,uint64,uint256,uint64,uint64,bytes)")) return "0x";
+  if (selector === toFunctionSelector("redeemToXrp(uint256,uint256,uint64,uint256,uint64,uint64,bytes)")) {
+    return encodeFunctionResult({ abi: vaultAbi, functionName: "redeemToXrp", result: 5_000_000n });
+  }
   if (selector === toFunctionSelector("destroyVault(uint256,uint64,uint64,bytes)")) {
     return encodeFunctionResult({ abi: vaultAbi, functionName: "destroyVault", result: 5_000_000n });
   }

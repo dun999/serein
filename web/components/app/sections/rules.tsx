@@ -1,6 +1,12 @@
 "use client";
 
-import { formatUsd, parseUsd, type PrivatePolicy, type PrivateRecipient } from "@covenant/sdk";
+import {
+  formatUsd,
+  parseUsd,
+  type PreparedPolicyProposal,
+  type PrivatePolicy,
+  type PrivateRecipient,
+} from "@covenant/sdk";
 import { Clock3Icon, LockKeyholeIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { getAddress, isAddress } from "viem";
@@ -18,6 +24,12 @@ export function RulesSection() {
   const { vaultClient } = useCovenant();
   const { vault, snap, busy, run, rememberPolicy } = useTreasury();
   const active = snap?.policy;
+  const [preparedUpdate, setPreparedUpdate] = useState<{
+    vault: `0x${string}`;
+    policy: PrivatePolicy;
+    prepared: PreparedPolicyProposal;
+  } | null>(null);
+  const pendingUpdate = preparedUpdate?.vault === vault ? preparedUpdate : null;
 
   if (!active) {
     return (
@@ -58,24 +70,24 @@ export function RulesSection() {
             key={`${vault}:${snap?.state.policyVersion.toString()}`}
             policy={active}
             busy={busy}
+            authorizationReady={pendingUpdate !== null}
             onPropose={(next) =>
-              run("propose-policy", async () => {
+              run("authorize-policy", async () => {
                 if (!vault || !vaultClient) throw new Error("Vault is not ready");
                 if (!snap?.passkey) {
                   throw new Error("The current policy passkey is required to replace vault rules");
                 }
-                const result = await vaultClient.proposePolicy({
+                const prepared = await vaultClient.authorizePolicyProposal({
                   vault,
                   policy: next,
                   passkey: snap.passkey,
                 });
-                localStorage.setItem(pendingKey(vault), JSON.stringify(next));
+                setPreparedUpdate({ vault, policy: next, prepared });
                 return {
-                  kind: "done",
-                  message: "Passkey verified and encrypted policy update proposed. It becomes eligible after the vault timelock.",
-                  instructionHash: result.authorization.instructionTransaction,
-                  authorization: result.authorization,
-                  hash: result.transaction,
+                  kind: "ready",
+                  message: "Passkey verified and FCC authorized this encrypted update. Click Submit authorized update to open the wallet transaction.",
+                  instructionHash: prepared.authorization.instructionTransaction,
+                  authorization: prepared.authorization,
                 };
               })
             }
@@ -100,6 +112,38 @@ export function RulesSection() {
               })
             }
           />
+          {pendingUpdate ? (
+            <div className="mt-5 flex flex-wrap gap-2 rounded-lg border border-accent/30 bg-accent/5 p-4">
+              <Button
+                onClick={() =>
+                  run("execute-policy", async () => {
+                    if (!vaultClient) throw new Error("Vault is not ready");
+                    const hash = await vaultClient.executePolicyProposal({
+                      vault: pendingUpdate.vault,
+                      prepared: pendingUpdate.prepared,
+                    });
+                    const authorization = pendingUpdate.prepared.authorization;
+                    localStorage.setItem(pendingKey(pendingUpdate.vault), JSON.stringify(pendingUpdate.policy));
+                    setPreparedUpdate(null);
+                    return {
+                      kind: "done",
+                      message: "The encrypted policy update was proposed. It becomes eligible after the vault timelock.",
+                      instructionHash: authorization.instructionTransaction,
+                      authorization,
+                      hash,
+                    };
+                  })
+                }
+                disabled={busy !== null}
+              >
+                {busy === "execute-policy" ? <Spinner data-icon="inline-start" /> : null}
+                Submit authorized update
+              </Button>
+              <Button variant="outline" onClick={() => setPreparedUpdate(null)} disabled={busy !== null}>
+                Discard authorization
+              </Button>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -115,12 +159,14 @@ export function RulesSection() {
 function PolicyEditor({
   policy,
   busy,
+  authorizationReady,
   onPropose,
   onApply,
   onCancel,
 }: {
   policy: PrivatePolicy;
   busy: string | null;
+  authorizationReady: boolean;
   onPropose: (policy: PrivatePolicy) => void;
   onApply: () => void;
   onCancel: () => void;
@@ -192,9 +238,9 @@ function PolicyEditor({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => onPropose(build())} disabled={busy !== null}>
-          {busy === "propose-policy" ? <Spinner data-icon="inline-start" /> : <Clock3Icon data-icon="inline-start" />}
-          Verify passkey and propose
+        <Button onClick={() => onPropose(build())} disabled={busy !== null || authorizationReady}>
+          {busy === "authorize-policy" ? <Spinner data-icon="inline-start" /> : <Clock3Icon data-icon="inline-start" />}
+          Verify policy update
         </Button>
         <Button variant="outline" onClick={onApply} disabled={busy !== null}>
           {busy === "apply-policy" ? <Spinner data-icon="inline-start" /> : null}

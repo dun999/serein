@@ -1,6 +1,12 @@
 "use client";
 
-import { formatFxrp, formatUsd, parseFxrp } from "@covenant/sdk";
+import {
+  formatFxrp,
+  formatUsd,
+  parseFxrp,
+  type FccAdminAuthorization,
+  type FccAuthorization,
+} from "@covenant/sdk";
 import { LockIcon, ShieldAlertIcon, ShieldCheckIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -29,6 +35,19 @@ export function CashOutSection() {
   const { vault, snap, busy, run, forgetPolicy } = useTreasury();
   const locked = snap?.state.status === "locked";
   const [minimumRedeem, setMinimumRedeem] = useState<bigint | null>(null);
+  const [preparedRedeem, setPreparedRedeem] = useState<{
+    vault: `0x${string}`;
+    amount: bigint;
+    rawAmount: string;
+    authorization: FccAuthorization;
+  } | null>(null);
+  const [preparedDestroy, setPreparedDestroy] = useState<{
+    vault: `0x${string}`;
+    authorization: FccAdminAuthorization;
+  } | null>(null);
+  const [destroyDialogOpen, setDestroyDialogOpen] = useState(false);
+  const pendingRedeem = preparedRedeem?.vault === vault ? preparedRedeem : null;
+  const pendingDestroy = preparedDestroy?.vault === vault ? preparedDestroy : null;
 
   useEffect(() => {
     if (!vaultClient) return;
@@ -71,12 +90,12 @@ export function CashOutSection() {
             <AmountForm
               id="redeemAmount"
               label="Amount to redeem"
-              action="Authorize and redeem"
-              busy={busy === "redeem"}
-              disabled={!vault || !snap || !vaultClient || locked}
+              action="Authorize redemption"
+              busy={busy === "authorize-redeem"}
+              disabled={!vault || !snap || !vaultClient || locked || pendingRedeem !== null}
               hint={`FXRP · minimum ${minimumRedeem === null ? "—" : formatFxrp(minimumRedeem)} · available ${snap ? formatFxrp(snap.state.balance) : "—"}`}
               onSubmit={(raw) =>
-                run("redeem", async () => {
+                run("authorize-redeem", async () => {
                   if (!vault || !snap || !vaultClient) throw new Error("Vault is not ready");
                   const amount = parseFxrp(raw);
                   if (minimumRedeem !== null && amount < minimumRedeem) {
@@ -85,21 +104,50 @@ export function CashOutSection() {
                   if (!snap.passkey) {
                     throw new Error("This redemption requires the passkey enrolled with the private policy");
                   }
-                  const result = await vaultClient.redeemToXrp({
+                  const authorization = await vaultClient.authorizeRedeem({
                     vault,
                     amount,
                     passkey: snap.passkey,
                   });
+                  setPreparedRedeem({ vault, amount, rawAmount: raw, authorization });
                   return {
-                    kind: "done",
-                    message: `${raw} FXRP (${formatUsd(result.authorization.amountUsd)}) entered FAssets redemption.`,
-                    instructionHash: result.authorization.instructionTransaction,
-                    hash: result.transaction,
-                    authorization: result.authorization,
+                    kind: "ready",
+                    message: `${raw} FXRP (${formatUsd(authorization.amountUsd)}) was approved for redemption. Click Execute redemption to open the wallet transaction.`,
+                    instructionHash: authorization.instructionTransaction,
+                    authorization,
                   };
                 })
               }
             />
+            {pendingRedeem ? (
+              <div className="mt-5 flex flex-wrap gap-2 rounded-lg border border-accent/30 bg-accent/5 p-4">
+                <Button
+                  onClick={() =>
+                    run("execute-redeem", async () => {
+                      if (!vaultClient) throw new Error("Vault is not ready");
+                      const hash = await vaultClient.executeRedeem(pendingRedeem);
+                      const authorization = pendingRedeem.authorization;
+                      const rawAmount = pendingRedeem.rawAmount;
+                      setPreparedRedeem(null);
+                      return {
+                        kind: "done",
+                        message: `${rawAmount} FXRP entered FAssets redemption to your committed XRPL address.`,
+                        instructionHash: authorization.instructionTransaction,
+                        authorization,
+                        hash,
+                      };
+                    })
+                  }
+                  disabled={busy !== null}
+                >
+                  {busy === "execute-redeem" ? <Spinner data-icon="inline-start" /> : null}
+                  Execute redemption
+                </Button>
+                <Button variant="outline" onClick={() => setPreparedRedeem(null)} disabled={busy !== null}>
+                  Discard authorization
+                </Button>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -167,12 +215,12 @@ export function CashOutSection() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <AlertDialog>
+            <AlertDialog open={destroyDialogOpen} onOpenChange={setDestroyDialogOpen}>
               <AlertDialogTrigger
                 render={
                   <Button
                     variant="destructive"
-                    disabled={!vault || !snap?.passkey || busy !== null || locked}
+                    disabled={!vault || !snap?.passkey || busy !== null || locked || pendingDestroy !== null}
                   />
                 }
               >
@@ -197,32 +245,62 @@ export function CashOutSection() {
                   <AlertDialogAction
                     variant="destructive"
                     disabled={busy !== null}
-                    onClick={() =>
-                      void run("destroy-vault", async () => {
+                    onClick={() => {
+                      setDestroyDialogOpen(false);
+                      void run("authorize-destroy", async () => {
                         if (!vault || !vaultClient || !snap?.passkey) {
                           throw new Error("Vault and its enrolled passkey are required");
                         }
-                        const result = await vaultClient.destroyVault({
+                        const authorization = await vaultClient.authorizeDestroy({
                           vault,
                           passkey: snap.passkey,
                         });
-                        forgetPolicy(vault);
+                        setPreparedDestroy({ vault, authorization });
                         return {
-                          kind: "done",
-                          message: "Passkey verified. The vault is permanently closed and its full FXRP balance was returned to the owner wallet.",
-                          instructionHash: result.authorization.instructionTransaction,
-                          authorization: result.authorization,
-                          hash: result.transaction,
+                          kind: "ready",
+                          message: "Passkey verified and FCC authorized the destruction. Click Execute destruction to open the final wallet transaction.",
+                          instructionHash: authorization.instructionTransaction,
+                          authorization,
                         };
-                      })
-                    }
+                      });
+                    }}
                   >
-                    {busy === "destroy-vault" ? <Spinner data-icon="inline-start" /> : null}
-                    Verify and destroy
+                    {busy === "authorize-destroy" ? <Spinner data-icon="inline-start" /> : null}
+                    Verify passkey
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            {pendingDestroy ? (
+              <div className="mt-5 flex flex-wrap gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+                <Button
+                  variant="destructive"
+                  onClick={() =>
+                    run("execute-destroy", async () => {
+                      if (!vaultClient) throw new Error("Vault is not ready");
+                      const hash = await vaultClient.executeDestroy(pendingDestroy);
+                      const authorization = pendingDestroy.authorization;
+                      setPreparedDestroy(null);
+                      forgetPolicy(pendingDestroy.vault);
+                      return {
+                        kind: "done",
+                        message: "The vault is permanently closed and its full FXRP balance was returned to the owner wallet.",
+                        instructionHash: authorization.instructionTransaction,
+                        authorization,
+                        hash,
+                      };
+                    })
+                  }
+                  disabled={busy !== null}
+                >
+                  {busy === "execute-destroy" ? <Spinner data-icon="inline-start" /> : null}
+                  Execute destruction
+                </Button>
+                <Button variant="outline" onClick={() => setPreparedDestroy(null)} disabled={busy !== null}>
+                  Discard authorization
+                </Button>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

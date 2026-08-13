@@ -16,6 +16,7 @@ import { Stat } from "@/components/app/stat";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { useCovenant } from "@/lib/covenant-provider";
 import { explorerAddress } from "@/lib/chain";
 import { useTreasury } from "@/lib/treasury-provider";
@@ -48,6 +49,12 @@ export function FundsSection() {
   const [mintError, setMintError] = useState<string | null>(null);
   const [xaman, setXaman] = useState<XamanRequest | null>(null);
   const [hydratedVault, setHydratedVault] = useState<string | null>(null);
+  const [preparedDeposit, setPreparedDeposit] = useState<{
+    vault: `0x${string}`;
+    amount: bigint;
+    rawAmount: string;
+  } | null>(null);
+  const pendingDeposit = preparedDeposit?.vault === vault ? preparedDeposit : null;
   const xamanUuid = xaman?.uuid;
   const xamanState = xaman?.state;
 
@@ -184,19 +191,45 @@ export function FundsSection() {
             <AmountForm
               id="depositAmount"
               label="Amount to protect"
-              action="Approve and deposit"
-              busy={busy === "deposit"}
-              disabled={!vault || !vaultClient || snap?.state.status === "locked"}
+              action="Approve FXRP"
+              busy={busy === "approve-deposit"}
+              disabled={!vault || !vaultClient || snap?.state.status === "locked" || pendingDeposit !== null}
               onSubmit={(raw) =>
-                run("deposit", async () => {
+                run("approve-deposit", async () => {
                   if (!vault || !vaultClient) throw new Error("Vault is not ready");
                   const amount = parseFxrp(raw);
-                  await vaultClient.approveFxrp(vault, amount);
-                  const hash = await vaultClient.deposit(vault, amount);
-                  return { kind: "done", message: `${raw} FXRP is now protected.`, hash };
+                  const hash = await vaultClient.approveFxrp(vault, amount);
+                  setPreparedDeposit({ vault, amount, rawAmount: raw });
+                  return {
+                    kind: "ready",
+                    message: `${raw} FXRP was approved. Click Deposit approved FXRP to complete the transfer.`,
+                    hash,
+                  };
                 })
               }
             />
+            {pendingDeposit ? (
+              <div className="mt-5 flex flex-wrap gap-2 rounded-lg border border-accent/30 bg-accent/5 p-4">
+                <Button
+                  onClick={() =>
+                    run("execute-deposit", async () => {
+                      if (!vaultClient) throw new Error("Vault is not ready");
+                      const hash = await vaultClient.deposit(pendingDeposit.vault, pendingDeposit.amount);
+                      const rawAmount = pendingDeposit.rawAmount;
+                      setPreparedDeposit(null);
+                      return { kind: "done", message: `${rawAmount} FXRP is now protected.`, hash };
+                    })
+                  }
+                  disabled={busy !== null}
+                >
+                  {busy === "execute-deposit" ? <Spinner data-icon="inline-start" /> : null}
+                  Deposit approved FXRP
+                </Button>
+                <Button variant="outline" onClick={() => setPreparedDeposit(null)} disabled={busy !== null}>
+                  Cancel
+                </Button>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 

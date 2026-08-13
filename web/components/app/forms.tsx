@@ -254,6 +254,49 @@ export function OutcomePanel({ outcome }: { outcome: Outcome }) {
       </Alert>
     );
   }
+  if (outcome.kind === "ready") {
+    return (
+      <Alert>
+        <CheckCircle2Icon />
+        <AlertTitle>Authorization ready</AlertTitle>
+        <AlertDescription className="flex flex-col gap-3">
+          <span>{outcome.message}</span>
+          <EvidenceTimeline
+            steps={[
+              ...(outcome.instructionHash
+                ? [{
+                label: "FCC instruction",
+                detail: "Open the confirmed instruction transaction",
+                state: "complete" as const,
+                href: explorerTx(outcome.instructionHash),
+              }]
+                : []),
+              ...(outcome.authorization
+                ? [{
+                label: "Private policy decision",
+                detail: `Authorization ${outcome.authorization.digest.slice(0, 10)}… bound to nonce ${outcome.authorization.nonce}`,
+                state: "complete" as const,
+              }]
+                : []),
+              ...(outcome.hash
+                ? [{
+                    label: "On-chain approval",
+                    detail: "Open the confirmed approval transaction",
+                    state: "complete" as const,
+                    href: explorerTx(outcome.hash),
+                  }]
+                : []),
+              {
+                label: "Vault execution",
+                detail: "Waiting for your separate Execute click and wallet confirmation",
+                state: "pending",
+              },
+            ]}
+          />
+        </AlertDescription>
+      </Alert>
+    );
+  }
   return (
     <Alert>
       <CheckCircle2Icon />

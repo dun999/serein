@@ -58,6 +58,12 @@ export interface DirectMintSettings {
   executorFeeUba: bigint;
 }
 
+export interface PreparedPolicyProposal {
+  authorization: FccAdminAuthorization;
+  commitment: Hex;
+  ciphertext: Hex;
+}
+
 export class PrivateVaultClient {
   constructor(private readonly options: PrivateVaultClientOptions) {}
 
@@ -146,6 +152,16 @@ export class PrivateVaultClient {
     policy: PrivatePolicy;
     passkey: PasskeyPolicy;
   }): Promise<{ authorization: FccAdminAuthorization; transaction: Hex }> {
+    const prepared = await this.authorizePolicyProposal(args);
+    const transaction = await this.executePolicyProposal({ vault: args.vault, prepared });
+    return { authorization: prepared.authorization, transaction };
+  }
+
+  async authorizePolicyProposal(args: {
+    vault: Address;
+    policy: PrivatePolicy;
+    passkey: PasskeyPolicy;
+  }): Promise<PreparedPolicyProposal> {
     const state = await this.getState(args.vault);
     const policyPublicKey = await this.policyPublicKey(args.vault);
     const encrypted = await encryptPolicy({
@@ -163,15 +179,26 @@ export class PrivateVaultClient {
       payloadHash,
       passkey: args.passkey,
     });
-    const transaction = await this.send(args.vault, vaultAbi, "proposePolicy", [
-      encrypted.commitment,
-      encrypted.ciphertext,
+    return {
+      authorization,
+      commitment: encrypted.commitment,
+      ciphertext: encrypted.ciphertext,
+    };
+  }
+
+  async executePolicyProposal(args: {
+    vault: Address;
+    prepared: PreparedPolicyProposal;
+  }): Promise<Hex> {
+    const { authorization } = args.prepared;
+    return this.send(args.vault, vaultAbi, "proposePolicy", [
+      args.prepared.commitment,
+      args.prepared.ciphertext,
       authorization.nonce,
       authorization.policyVersion,
       authorization.deadline,
       authorization.authorization,
     ]);
-    return { authorization, transaction };
   }
 
   async applyPolicy(vault: Address): Promise<Hex> {
@@ -188,6 +215,22 @@ export class PrivateVaultClient {
     amount: bigint;
     passkey?: PasskeyPolicy;
   }): Promise<{ authorization: FccAuthorization; transaction: Hex }> {
+    const authorization = await this.authorizeSpend(args);
+    const transaction = await this.executeSpend({
+      vault: args.vault,
+      to: args.to,
+      amount: args.amount,
+      authorization,
+    });
+    return { authorization, transaction };
+  }
+
+  async authorizeSpend(args: {
+    vault: Address;
+    to: Address;
+    amount: bigint;
+    passkey?: PasskeyPolicy;
+  }): Promise<FccAuthorization> {
     const state = await this.getState(args.vault);
     const proof = args.passkey
       ? await assertPasskey(
@@ -203,36 +246,75 @@ export class PrivateVaultClient {
           }),
         )
       : undefined;
-    const authorization = await this.options.fcc.authorizeSpend({
+    return this.options.fcc.authorizeSpend({
       vault: args.vault,
       to: args.to,
       amount: args.amount,
       stepUpProof: proof,
     });
-    const transaction = await this.sendAuthorization(args.vault, "spend", [args.to, args.amount], authorization);
-    return { authorization, transaction };
+  }
+
+  async executeSpend(args: {
+    vault: Address;
+    to: Address;
+    amount: bigint;
+    authorization: FccAuthorization;
+  }): Promise<Hex> {
+    return this.sendAuthorization(args.vault, "spend", [args.to, args.amount], args.authorization);
   }
 
   async withdraw(args: { vault: Address; amount: bigint; passkey?: PasskeyPolicy }) {
-    const proof = await this.passkeyProof(args.vault, args.amount, VaultOperation.Withdraw, args.passkey);
-    const authorization = await this.options.fcc.authorizeWithdraw({
+    const authorization = await this.authorizeWithdraw(args);
+    const transaction = await this.executeWithdraw({
       vault: args.vault,
       amount: args.amount,
-      stepUpProof: proof,
+      authorization,
     });
-    const transaction = await this.sendAuthorization(args.vault, "withdraw", [args.amount], authorization);
     return { authorization, transaction };
   }
 
-  async redeemToXrp(args: { vault: Address; amount: bigint; passkey?: PasskeyPolicy }) {
-    const proof = await this.passkeyProof(args.vault, args.amount, VaultOperation.Redeem, args.passkey);
-    const authorization = await this.options.fcc.authorizeRedeem({
+  async authorizeWithdraw(args: { vault: Address; amount: bigint; passkey?: PasskeyPolicy }) {
+    const proof = await this.passkeyProof(args.vault, args.amount, VaultOperation.Withdraw, args.passkey);
+    return this.options.fcc.authorizeWithdraw({
       vault: args.vault,
       amount: args.amount,
       stepUpProof: proof,
     });
-    const transaction = await this.sendAuthorization(args.vault, "redeemToXrp", [args.amount], authorization);
+  }
+
+  async executeWithdraw(args: {
+    vault: Address;
+    amount: bigint;
+    authorization: FccAuthorization;
+  }): Promise<Hex> {
+    return this.sendAuthorization(args.vault, "withdraw", [args.amount], args.authorization);
+  }
+
+  async redeemToXrp(args: { vault: Address; amount: bigint; passkey?: PasskeyPolicy }) {
+    const authorization = await this.authorizeRedeem(args);
+    const transaction = await this.executeRedeem({
+      vault: args.vault,
+      amount: args.amount,
+      authorization,
+    });
     return { authorization, transaction };
+  }
+
+  async authorizeRedeem(args: { vault: Address; amount: bigint; passkey?: PasskeyPolicy }) {
+    const proof = await this.passkeyProof(args.vault, args.amount, VaultOperation.Redeem, args.passkey);
+    return this.options.fcc.authorizeRedeem({
+      vault: args.vault,
+      amount: args.amount,
+      stepUpProof: proof,
+    });
+  }
+
+  async executeRedeem(args: {
+    vault: Address;
+    amount: bigint;
+    authorization: FccAuthorization;
+  }): Promise<Hex> {
+    return this.sendAuthorization(args.vault, "redeemToXrp", [args.amount], args.authorization);
   }
 
   async deposit(vault: Address, amount: bigint): Promise<Hex> {
@@ -332,21 +414,35 @@ export class PrivateVaultClient {
     authorization: FccAdminAuthorization;
     transaction: Hex;
   }> {
+    const authorization = await this.authorizeDestroy(args);
+    const transaction = await this.executeDestroy({ vault: args.vault, authorization });
+    return { authorization, transaction };
+  }
+
+  async authorizeDestroy(args: {
+    vault: Address;
+    passkey: PasskeyPolicy;
+  }): Promise<FccAdminAuthorization> {
     const state = await this.getState(args.vault);
-    const authorization = await this.adminAuthorization({
+    return this.adminAuthorization({
       vault: args.vault,
       state,
       action: VaultAdminAction.Destroy,
       payloadHash: addressPayloadHash(state.owner),
       passkey: args.passkey,
     });
-    const transaction = await this.send(args.vault, vaultAbi, "destroyVault", [
-      authorization.nonce,
-      authorization.policyVersion,
-      authorization.deadline,
-      authorization.authorization,
+  }
+
+  async executeDestroy(args: {
+    vault: Address;
+    authorization: FccAdminAuthorization;
+  }): Promise<Hex> {
+    return this.send(args.vault, vaultAbi, "destroyVault", [
+      args.authorization.nonce,
+      args.authorization.policyVersion,
+      args.authorization.deadline,
+      args.authorization.authorization,
     ]);
-    return { authorization, transaction };
   }
 
   private async passkeyProof(
