@@ -28,5 +28,22 @@ serein.103-150-93-190.sslip.io {
 # to the VPS and avoids registering a rotating quick-tunnel URL on-chain.
 fcc.103-150-93-190.sslip.io {
   encode zstd gzip
+
+  # The app polls this host from the browser, so it is always a cross-origin
+  # read from serein.finance. Results here are public, signed, read-only FCC
+  # records carrying no cookies or credentials, and anyone must be able to
+  # replay them to verify an authorization independently, so any origin may
+  # read them. Without this the browser discards every response and each
+  # authorization appears to time out after the instruction fee is spent.
+  header {
+    Access-Control-Allow-Origin "*"
+    Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+    Access-Control-Allow-Headers "Content-Type"
+    Access-Control-Max-Age "86400"
+  }
+
+  @preflight method OPTIONS
+  respond @preflight 204
+
   reverse_proxy 127.0.0.1:6674
 }
