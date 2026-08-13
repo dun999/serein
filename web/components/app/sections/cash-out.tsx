@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { useCovenant } from "@/lib/covenant-provider";
+import { requireWithinPerPaymentLimit } from "@/lib/policy-preflight";
 import { useTreasury } from "@/lib/treasury-provider";
 
 export function CashOutSection() {
@@ -82,6 +83,7 @@ export function CashOutSection() {
                     throw new Error(`FAssets currently requires at least ${formatFxrp(minimumRedeem)} FXRP`);
                   }
                   const quote = await vaultClient.quote(vault, amount);
+                  requireWithinPerPaymentLimit(quote.amountUsd, snap.policy?.perTxCapUsd);
                   const threshold = snap.policy ? BigInt(snap.policy.stepUpThresholdUsd) : 0n;
                   const needsPasskey = quote.amountUsd > threshold;
                   if (needsPasskey && !snap.passkey) {

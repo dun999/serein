@@ -3,12 +3,13 @@ import { FccInfrastructureError, PolicyViolation } from "@covenant/sdk";
 import type { Outcome } from "@/lib/treasury-provider";
 
 export function explainOutcome(error: unknown): Outcome {
-  if (error instanceof PolicyViolation) {
+  const refusal = policyRefusal(error);
+  if (refusal) {
     return {
       kind: "refused",
-      rule: "Private policy refused",
-      detail: `${error.reason} No vault execution transaction was sent.`,
-      instructionHash: error.instructionTransaction,
+      rule: policyRule(refusal.reason),
+      detail: `${refusal.reason} No vault execution transaction was sent.`,
+      instructionHash: refusal.instructionTransaction,
     };
   }
 
@@ -62,4 +63,48 @@ export function explainOutcome(error: unknown): Outcome {
   }
 
   return { kind: "error", detail: message };
+}
+
+function policyRefusal(error: unknown): {
+  reason: string;
+  instructionTransaction?: `0x${string}`;
+} | null {
+  if (error instanceof PolicyViolation) {
+    return { reason: error.reason, instructionTransaction: error.instructionTransaction };
+  }
+  if (!error || typeof error !== "object") return null;
+
+  const candidate = error as {
+    name?: unknown;
+    reason?: unknown;
+    instructionTransaction?: unknown;
+    cause?: unknown;
+  };
+  const instructionTransaction = typeof candidate.instructionTransaction === "string"
+    && /^0x[0-9a-fA-F]{64}$/.test(candidate.instructionTransaction)
+    ? candidate.instructionTransaction as `0x${string}`
+    : undefined;
+
+  if (candidate.name === "PolicyViolation" && typeof candidate.reason === "string") {
+    return { reason: candidate.reason, instructionTransaction };
+  }
+
+  if (candidate.cause && candidate.cause !== error) {
+    const nested = policyRefusal(candidate.cause);
+    if (nested) {
+      return {
+        reason: nested.reason,
+        instructionTransaction: instructionTransaction ?? nested.instructionTransaction,
+      };
+    }
+  }
+  return null;
+}
+
+function policyRule(reason: string): string {
+  if (/per-transaction limit/i.test(reason)) return "Per-payment limit exceeded";
+  if (/daily limit/i.test(reason)) return "Daily limit exceeded";
+  if (/recipient is not allowed/i.test(reason)) return "Recipient not approved";
+  if (/passkey|webauthn/i.test(reason)) return "Passkey verification refused";
+  return "Private policy refused";
 }

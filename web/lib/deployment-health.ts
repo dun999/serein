@@ -101,7 +101,7 @@ export async function checkDeploymentHealth(
   options: HealthOptions = {},
 ): Promise<DeploymentHealth> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const timeoutMs = options.timeoutMs ?? 4_000;
+  const timeoutMs = options.timeoutMs ?? 8_000;
   const checkedAt = options.now?.() ?? new Date();
   const configured = isDeploymentConfigured(deployment);
 
@@ -152,7 +152,7 @@ export async function checkDeploymentHealth(
     })
     .catch(() => fail("FCC proxy is unreachable"));
 
-  const teePromise = Promise.all([
+  const teePromise = retry(() => Promise.all([
     contractRead(
       deployment,
       "getTeeMachineStatus",
@@ -181,7 +181,7 @@ export async function checkDeploymentHealth(
       fetchImpl,
       timeoutMs,
     ),
-  ])
+  ]), 1)
     .then(([status, extensionId, machineValue, activeValue]) => {
       if (Number(status) !== 2) return fail(`FCC machine status is ${status}; Production is 2`);
       if (extensionId !== BigInt(deployment.fcc.extensionId!)) {
@@ -211,11 +211,9 @@ export async function checkDeploymentHealth(
     })
     .catch(() => fail("FCC machine registry state could not be verified"));
 
-  const availabilityPromise = checkAvailability(
-    deployment,
-    fetchImpl,
-    timeoutMs,
-    checkedAt,
+  const availabilityPromise = retry(
+    () => checkAvailability(deployment, fetchImpl, timeoutMs, checkedAt),
+    1,
   ).catch(() => fail("FCC availability validity could not be verified"));
 
   const [
@@ -396,6 +394,18 @@ async function fetchWithTimeout(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function retry<T>(operation: () => Promise<T>, retries: number): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 export function configuredAddressCount(deployment: PublicDeployment): number {

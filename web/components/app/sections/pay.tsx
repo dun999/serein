@@ -7,6 +7,7 @@ import { getAddress } from "viem";
 import { PayForm } from "@/components/app/forms";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCovenant } from "@/lib/covenant-provider";
+import { requireWithinPerPaymentLimit } from "@/lib/policy-preflight";
 import { useTreasury } from "@/lib/treasury-provider";
 
 export function PaySection() {
@@ -32,6 +33,7 @@ export function PaySection() {
                 if (!vault || !snap || !vaultClient) throw new Error("Vault is not ready");
                 const amount = parseFxrp(rawAmount);
                 const quote = await vaultClient.quote(vault, amount);
+                requireWithinPerPaymentLimit(quote.amountUsd, snap.policy?.perTxCapUsd);
                 const threshold = snap.policy ? BigInt(snap.policy.stepUpThresholdUsd) : 0n;
                 const needsPasskey = quote.amountUsd > threshold;
                 if (needsPasskey && !snap.passkey) {
@@ -66,7 +68,8 @@ export function PaySection() {
             <RadioTowerIcon className="mt-0.5 size-4 shrink-0 text-accent" />
             <p className="text-muted-foreground">
               FCC decrypts policy version {snap?.state.policyVersion.toString() ?? "—"}, reads the
-              vault nonce and balance, then prices the request through FTSOv2.
+              vault nonce and balance, then prices the request through FTSOv2. Your current
+              per-payment limit is {snap?.policy ? formatUsd(BigInt(snap.policy.perTxCapUsd)) : "confidential"}.
             </p>
           </div>
           <div className="flex items-start gap-3">

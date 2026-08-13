@@ -176,8 +176,9 @@ export class FccClient {
       const decoded = await this.poll(instructionId);
       return { decoded, instructionId, instructionTransaction: hash };
     } catch (error) {
-      if (error instanceof PolicyViolation) {
-        throw new PolicyViolation(error.message, error.reason, hash);
+      const refusal = policyRefusal(error);
+      if (refusal) {
+        throw new PolicyViolation(refusal.message, refusal.reason, hash);
       }
       const message = error instanceof Error ? error.message : "FCC authorization failed";
       throw new FccInfrastructureError(message, instructionId, hash, error);
@@ -225,6 +226,22 @@ export class FccClient {
     }
     throw new CovenantError("FCC authorization timed out");
   }
+}
+
+function policyRefusal(error: unknown): { message: string; reason: string } | null {
+  if (error instanceof PolicyViolation) {
+    return { message: error.message, reason: error.reason };
+  }
+  if (!error || typeof error !== "object") return null;
+  const candidate = error as { name?: unknown; message?: unknown; reason?: unknown };
+  if (
+    candidate.name !== "PolicyViolation"
+    || typeof candidate.message !== "string"
+    || typeof candidate.reason !== "string"
+  ) {
+    return null;
+  }
+  return { message: candidate.message, reason: candidate.reason };
 }
 
 export function decodeResultData(data: string | Record<string, unknown> | undefined): Record<string, unknown> {

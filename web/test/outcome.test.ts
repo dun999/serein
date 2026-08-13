@@ -29,6 +29,26 @@ describe("action failures", () => {
     ))).toMatchObject({ kind: "error", instructionHash: transaction });
   });
 
+  it("recognizes a policy refusal wrapped across a package boundary", () => {
+    const instructionId = `0x${"4".repeat(64)}` as const;
+    const transaction = `0x${"5".repeat(64)}` as const;
+    const crossBundleRefusal = Object.assign(new Error("per-transaction limit exceeded"), {
+      name: "PolicyViolation",
+      reason: "per-transaction limit exceeded",
+    });
+    const outcome = explainOutcome(new FccInfrastructureError(
+      crossBundleRefusal.message,
+      instructionId,
+      transaction,
+      crossBundleRefusal,
+    ));
+    expect(outcome).toMatchObject({
+      kind: "refused",
+      rule: "Per-payment limit exceeded",
+      instructionHash: transaction,
+    });
+  });
+
   it("does not expose wallet provider error noise", () => {
     expect(explainOutcome(new Error("User rejected request (4001)"))).toEqual({
       kind: "error",
