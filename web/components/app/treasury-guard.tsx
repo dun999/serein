@@ -7,6 +7,8 @@ import {
   type PrivatePolicy,
 } from "@covenant/sdk";
 import { AlertCircleIcon, ServerCogIcon } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { getAddress, isAddress, toBytes, type Address } from "viem";
 
 import { OpenVaultForm, OutcomePanel, type OpenVaultValues } from "@/components/app/forms";
@@ -18,6 +20,7 @@ import { useCovenant } from "@/lib/covenant-provider";
 import { useTreasury } from "@/lib/treasury-provider";
 
 export function TreasuryGuard({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const {
     address,
     chainOk,
@@ -30,6 +33,7 @@ export function TreasuryGuard({ children }: { children: React.ReactNode }) {
   } = useCovenant();
   const {
     vault,
+    legacyVault,
     snap,
     busy,
     outcome,
@@ -213,11 +217,43 @@ export function TreasuryGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (legacyVault && pathname !== "/app/cash-out") {
+    return (
+      <Alert>
+        <AlertCircleIcon />
+        <AlertTitle>Move this vault to the corrected contract</AlertTitle>
+        <AlertDescription className="flex flex-col items-start gap-3">
+          <span>
+            This earlier vault cannot receive the latest send and cash-out fix. Close it with
+            your passkey to return all FXRP to your wallet, then create a new vault.
+          </span>
+          <Button
+            nativeButton={false}
+            render={<Link href="/app/cash-out" />}
+            size="sm"
+          >
+            Open vault controls
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   return (
-    <>
+    <div className="flex flex-col gap-4">
+      {legacyVault ? (
+        <Alert>
+          <AlertCircleIcon />
+          <AlertTitle>Earlier vault contract</AlertTitle>
+          <AlertDescription>
+            Use Destroy vault below to return all FXRP to your wallet. You can then create a new
+            vault with the corrected send and cash-out flow.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {children}
       {outcome ? <OutcomePanel outcome={outcome} /> : null}
-    </>
+    </div>
   );
 }
 

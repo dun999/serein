@@ -50,6 +50,7 @@ export interface Snapshot {
 interface TreasuryContext {
   vault: Address | null;
   vaults: readonly Address[];
+  legacyVault: boolean;
   snap: Snapshot | null;
   busy: string | null;
   outcome: Outcome | null;
@@ -66,7 +67,11 @@ const Ctx = createContext<TreasuryContext | null>(null);
 export function TreasuryProvider({ children }: { children: React.ReactNode }) {
   const { address, vaultClient } = useCovenant();
   const [selection, setSelection] = useState<{ owner: Address; vault: Address } | null>(null);
-  const [owned, setOwned] = useState<{ owner: Address; vaults: readonly Address[] } | null>(null);
+  const [owned, setOwned] = useState<{
+    owner: Address;
+    vaults: readonly Address[];
+    legacyVaults: readonly Address[];
+  } | null>(null);
   const [snapshot, setSnapshot] = useState<{ owner: Address; value: Snapshot } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -99,7 +104,9 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     async (vault: Address) => {
       if (!address) return;
       setOwned((current) => {
-        if (!current || current.owner !== address) return { owner: address, vaults: [vault] };
+        if (!current || current.owner !== address) {
+          return { owner: address, vaults: [vault], legacyVaults: [] };
+        }
         return current.vaults.some((item) => item.toLowerCase() === vault.toLowerCase())
           ? current
           : { ...current, vaults: [...current.vaults, vault] };
@@ -124,17 +131,32 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
       const vaults = [...new Map(
         discovered.flat().map((vault) => [vault.toLowerCase(), vault]),
       ).values()];
+      const legacyVaults = [...new Map(
+        discovered.slice(1).flat().map((vault) => [vault.toLowerCase(), vault]),
+      ).values()];
+      const legacySet = new Set(legacyVaults.map((vault) => vault.toLowerCase()));
       if (cancelled) return;
-      setOwned({ owner, vaults });
+      setOwned({ owner, vaults, legacyVaults });
       const states = await Promise.all(
         vaults.map((vault) => vaultClient.getState(vault).catch(() => null)),
       );
       if (cancelled) return;
       const latest = states
-        .filter((state) => state && state.status !== "destroyed")
+        .filter(
+          (state) =>
+            state &&
+            state.status !== "destroyed" &&
+            (!legacySet.has(state.address.toLowerCase()) ||
+              state.balance > 0n ||
+              readPolicy(state.address) !== null),
+        )
         .sort((left, right) => Number((right?.balance ?? 0n) - (left?.balance ?? 0n)))
-        .at(0)?.address ?? vaults.at(-1);
-      if (!latest) return;
+        .at(0)?.address;
+      if (!latest) {
+        setSelection(null);
+        setSnapshot(null);
+        return;
+      }
       setSelection({ owner, vault: latest });
       await refresh(latest);
     })();
@@ -148,6 +170,15 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
   const visibleVaults = useMemo(
     () => (owned?.owner === address ? owned.vaults : []),
     [owned, address],
+  );
+  const visibleLegacyVault = useMemo(
+    () =>
+      Boolean(
+        visibleVault &&
+          owned?.owner === address &&
+          owned.legacyVaults.some((vault) => vault.toLowerCase() === visibleVault.toLowerCase()),
+      ),
+    [address, owned, visibleVault],
   );
   const visibleSnap = snapshot?.owner === address && snapshot.value.state.address === visibleVault
     ? snapshot.value
@@ -205,6 +236,7 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     () => ({
       vault: visibleVault,
       vaults: visibleVaults,
+      legacyVault: visibleLegacyVault,
       snap: visibleSnap,
       busy,
       outcome,
@@ -218,6 +250,7 @@ export function TreasuryProvider({ children }: { children: React.ReactNode }) {
     [
       visibleVault,
       visibleVaults,
+      visibleLegacyVault,
       visibleSnap,
       busy,
       outcome,
