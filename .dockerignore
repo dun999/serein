@@ -1,0 +1,9 @@
+.git
+**/.env
+**/.env.*
+web/.env.local
+**/node_modules
+**/.next
+**/coverage
+extension/images
+extension/runtime

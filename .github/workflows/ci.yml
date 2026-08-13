@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: forge build --sizes
+      - run: forge test -vvv
+
+  sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm secret:scan
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: forge build
+      - run: cd extension && forge build
+      - run: pnpm --filter @covenant/sdk gen:abi
+      - run: git diff --exit-code -- packages/sdk/src/private-abi.ts
+      - run: pnpm --filter @covenant/sdk typecheck
+      - run: pnpm --filter @covenant/sdk test
+      - run: pnpm --filter @covenant/sdk build
+      - run: pnpm --filter web test
+      - run: pnpm --filter web lint
+      - run: pnpm --filter web exec tsc --noEmit
+      - run: pnpm build
+
+  extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: extension/go/go.mod
+          cache-dependency-path: extension/go/go.sum
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Generate FCC sender bindings
+        working-directory: extension
+        run: ./scripts/generate-bindings.sh
+      - run: go vet ./...
+      - run: go test ./...
+      - name: Build reproducible FCC image
+        working-directory: extension
+        run: ./scripts/verify-reproducible-image.sh
+      - name: Test FCC deployment tooling
+        working-directory: extension/tools
+        run: go test ./... && go vet ./...
+      - name: Test FCC instruction sender
+        working-directory: extension
+        run: forge test -vv
+
+  web-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @covenant/sdk build
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - run: pnpm --filter web test:e2e

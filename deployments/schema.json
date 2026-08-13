@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://covenant.local/deployments/schema.json",
+  "title": "Covenant public deployment manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "network", "chainId", "rpcUrl", "explorerUrl", "contracts", "fcc", "evidence"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "network": { "const": "coston2" },
+    "chainId": { "const": 114 },
+    "rpcUrl": { "type": "string", "format": "uri" },
+    "explorerUrl": { "type": "string", "format": "uri" },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vaultFactory", "instructionSender", "fxrp", "assetManager", "ftsoV2", "teeMachineRegistry"],
+      "properties": {
+        "vaultFactory": { "$ref": "#/$defs/address" },
+        "instructionSender": { "$ref": "#/$defs/address" },
+        "fxrp": { "$ref": "#/$defs/address" },
+        "assetManager": { "$ref": "#/$defs/address" },
+        "ftsoV2": { "$ref": "#/$defs/address" },
+        "teeMachineRegistry": { "$ref": "#/$defs/address" }
+      }
+    },
+    "fcc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extensionId", "teeMachine", "proxyUrl", "imageDigest"],
+      "properties": {
+        "extensionId": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }] },
+        "teeMachine": { "$ref": "#/$defs/address" },
+        "proxyUrl": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uri" }] },
+        "imageDigest": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }] }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deployedAt", "webUrl", "demoVideoUrl"],
+      "properties": {
+        "deployedAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
+        "webUrl": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uri" }] },
+        "demoVideoUrl": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uri" }] }
+      }
+    }
+  },
+  "$defs": {
+    "address": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+      ]
+    }
+  }
+}

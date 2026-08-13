@@ -1,0 +1,24 @@
+[Unit]
+Description=Serein web application
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=90
+TimeoutStopSec=30
+EnvironmentFile=%h/serein-web/runtime.env
+ExecStartPre=-/usr/bin/podman rm --force serein-web
+ExecStart=/usr/bin/podman run \
+  --name serein-web \
+  --pull=never \
+  --publish 127.0.0.1:3000:3000 \
+  --add-host fcc.103-150-93-190.sslip.io:host-gateway \
+  --env-file %h/serein-web/runtime.env \
+  localhost/serein-web:latest
+ExecStop=/usr/bin/podman stop --time 20 serein-web
+ExecStopPost=-/usr/bin/podman rm --force serein-web
+
+[Install]
+WantedBy=default.target

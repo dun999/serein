@@ -1,0 +1,21 @@
+.env
+.env.*.local
+!.env.example
+node_modules/
+.next/
+dist/
+out/
+cache/
+broadcast/
+coverage/
+*.tsbuildinfo
+extension/bin/
+extension/config/extension.env
+extension/config/proxy/*.toml
+extension/config/proxy/runtime.env
+extension/config/proxy/*.tmp
+extension/.fcc-scaffold/
+deployments/*.local.json
+
+# covenant local state (keys, deployments)
+.covenant/

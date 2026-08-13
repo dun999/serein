@@ -1,0 +1,32 @@
+(serein_app) {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "publickey-credentials-create=(self), publickey-credentials-get=(self)"
+  }
+
+  reverse_proxy 127.0.0.1:3000
+}
+
+serein.finance {
+  import serein_app
+}
+
+www.serein.finance {
+  redir https://serein.finance{uri} permanent
+}
+
+# Keep the IP-derived hostname as a recovery URL during DNS changes.
+serein.103-150-93-190.sslip.io {
+  import serein_app
+}
+
+# Stable public FCC ingress. The sslip.io hostname resolves deterministically
+# to the VPS and avoids registering a rotating quick-tunnel URL on-chain.
+fcc.103-150-93-190.sslip.io {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:6674
+}

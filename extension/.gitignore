@@ -1,0 +1,32 @@
+.env*
+*.env
+!*.example
+
+# The Go workload manifest is consumed by deployment scripts.
+!go/language.env
+
+# Coston2 proxy configs contain database credentials.
+config/proxy/extension_proxy.coston2.toml
+config/proxy/extension_proxy.coston2.docker.toml
+config/extension.env
+out/
+cache/
+.DS_Store
+
+# Compiled Go binaries
+tools/start-*
+tools/allow-*
+tools/deploy-*
+tools/register-*
+tools/run-*
+tools/verify-*
+tools/query-*
+tools/set-*
+
+# Generated contract bindings (produced by scripts/generate-bindings.sh)
+tools/pkg/contracts/*/autogen.go
+tools/pkg/contracts/*/*.abi
+tools/pkg/contracts/*/*.bin
+
+config/**/*.log
+config/register-tee.state

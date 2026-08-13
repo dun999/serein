@@ -1,0 +1,51 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 744 256"
+  role="img"
+  aria-labelledby="serein-logo-title serein-logo-description"
+>
+  <title id="serein-logo-title">Serein</title>
+  <desc id="serein-logo-description">
+    Two intersecting white rings on a Flare-red field beside the Serein wordmark.
+  </desc>
+
+  <!--
+    The original two-party mark is preserved: one ring represents the owner,
+    the other the secure execution layer, and the filled lens is the action
+    both approve. The red is Flare's official brand red.
+  -->
+  <g id="serein-mark">
+    <rect x="8" y="8" width="240" height="240" rx="60" fill="#E62359" />
+    <circle
+      cx="104"
+      cy="128"
+      r="56"
+      fill="none"
+      stroke="#FFFFFF"
+      stroke-width="12"
+    />
+    <circle
+      cx="152"
+      cy="128"
+      r="56"
+      fill="none"
+      stroke="#FFFFFF"
+      stroke-opacity="0.48"
+      stroke-width="12"
+    />
+    <path
+      d="M128 77.4A56 56 0 0 1 128 178.6A56 56 0 0 1 128 77.4Z"
+      fill="#FFFFFF"
+    />
+  </g>
+
+  <text
+    x="292"
+    y="169"
+    fill="#E62359"
+    font-family="Geist, Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="116"
+    font-weight="600"
+    letter-spacing="-5"
+  >Serein</text>
+</svg>

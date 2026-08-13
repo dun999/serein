@@ -1,0 +1,21 @@
+{
+  "name": "covenant",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter web dev",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "contracts:test": "forge test -vvv",
+    "fcc:test": "cd extension/go && go test ./...",
+    "fcc:tools:test": "cd extension/tools && go test ./...",
+    "web:lint": "pnpm --filter web lint",
+    "verify": "forge test && pnpm --filter @covenant/sdk test && pnpm --filter @covenant/sdk typecheck && pnpm --filter @covenant/sdk build && pnpm --filter web test && pnpm --filter web lint && pnpm --filter web exec tsc --noEmit && cd extension && ./scripts/generate-bindings.sh && forge test && cd go && go test ./... && go vet ./... && cd ../tools && go test ./... && go vet ./...",
+    "secret:scan": "node scripts/check-secrets.mjs",
+    "deployment:update": "node scripts/update-deployment.mjs",
+    "deployment:verify": "node scripts/verify-public-deployment.mjs",
+    "env:migrate": "node scripts/migrate-local-env.mjs",
+    "release:verify": "pnpm secret:scan && pnpm verify && pnpm build && pnpm deployment:verify"
+  }
+}

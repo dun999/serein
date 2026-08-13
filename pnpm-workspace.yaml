@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - web
+allowBuilds:
+  # vitest's bundler; needs its postinstall to fetch the native binary
+  esbuild: true
+  # eslint's native resolver
+  unrs-resolver: true

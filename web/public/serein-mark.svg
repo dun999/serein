@@ -1,0 +1,34 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 512 512"
+  role="img"
+  aria-labelledby="serein-mark-title serein-mark-description"
+>
+  <title id="serein-mark-title">Serein</title>
+  <desc id="serein-mark-description">
+    Two intersecting white rings on a Flare-red field.
+  </desc>
+
+  <rect width="512" height="512" rx="128" fill="#E62359" />
+  <circle
+    cx="208"
+    cy="256"
+    r="112"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="24"
+  />
+  <circle
+    cx="304"
+    cy="256"
+    r="112"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-opacity="0.48"
+    stroke-width="24"
+  />
+  <path
+    d="M256 154.8A112 112 0 0 1 256 357.2A112 112 0 0 1 256 154.8Z"
+    fill="#FFFFFF"
+  />
+</svg>
