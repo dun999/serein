@@ -8,7 +8,7 @@ import {
   type DirectMintSettings,
 } from "@covenant/sdk";
 import { CopyIcon, ExternalLinkIcon, RadioTowerIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AmountForm } from "@/components/app/forms";
 import { EvidenceTimeline, type EvidenceStep } from "@/components/app/evidence-timeline";
@@ -39,7 +39,22 @@ interface XamanRequest {
   expectedNet: string;
   state: XamanState;
   transaction?: string;
+  /** Epoch ms the request was created, so progress survives a page reload. */
+  createdAt?: number;
+  /** Epoch ms the XRPL payment was seen, which starts the FDC/executor wait. */
+  signedAt?: number;
 }
+
+/** A finished direct mint, kept so a reload still shows what happened. */
+interface XamanHistoryEntry {
+  uuid: string;
+  expectedNet: string;
+  state: XamanState;
+  transaction?: string;
+  finishedAt: number;
+}
+
+const MINT_HISTORY_LIMIT = 5;
 
 export function FundsSection() {
   const { vaultClient } = useCovenant();
@@ -48,7 +63,35 @@ export function FundsSection() {
   const [mintSettings, setMintSettings] = useState<DirectMintSettings | null>(null);
   const [mintError, setMintError] = useState<string | null>(null);
   const [xaman, setXaman] = useState<XamanRequest | null>(null);
+  const [history, setHistory] = useState<XamanHistoryEntry[]>([]);
   const [hydratedVault, setHydratedVault] = useState<string | null>(null);
+  // A direct mint takes minutes, so the card has to show that time is passing
+  // rather than looking stalled after a reload.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Record finished mints so a later reload still shows what happened, even
+  // once a newer request replaces the active card.
+  const archiveMint = useCallback((request: XamanRequest) => {
+    if (!isXamanFinished(request.state)) return;
+    setHistory((current) => {
+      const next = [
+        {
+          uuid: request.uuid,
+          expectedNet: request.expectedNet,
+          state: request.state,
+          ...(request.transaction ? { transaction: request.transaction } : {}),
+          finishedAt: Date.now(),
+        },
+        ...current.filter((entry) => entry.uuid !== request.uuid),
+      ].slice(0, MINT_HISTORY_LIMIT);
+      writeStoredHistory(request.vault, next);
+      return next;
+    });
+  }, []);
   const [preparedDeposit, setPreparedDeposit] = useState<{
     vault: `0x${string}`;
     amount: bigint;
@@ -64,10 +107,12 @@ export function FundsSection() {
       if (!active) return;
       if (!vault) {
         setXaman(null);
+        setHistory([]);
         setHydratedVault(null);
         return;
       }
       setXaman(readStoredXaman(vault));
+      setHistory(readStoredHistory(vault));
       setHydratedVault(vault.toLowerCase());
     });
     return () => {
@@ -116,17 +161,34 @@ export function FundsSection() {
         };
         if (!active) return;
         if (result.signed) {
-          setXaman((current) => current ? { ...current, state: "signed", transaction: result.transaction } : null);
+          setXaman((current) => current
+            ? {
+                ...current,
+                state: "signed",
+                transaction: result.transaction,
+                signedAt: current.signedAt ?? Date.now(),
+              }
+            : null);
           if (vault) await refresh(vault);
           return;
         }
         const failureStatus = result.status;
         if (failureStatus === "rejected" || failureStatus === "expired" || failureStatus === "wrong-network" || failureStatus === "invalid") {
-          setXaman((current) => current ? { ...current, state: failureStatus } : null);
+          setXaman((current) => {
+            if (!current) return null;
+            const next = { ...current, state: failureStatus };
+            archiveMint(next);
+            return next;
+          });
           return;
         }
         if (result.cancelled) {
-          setXaman((current) => current ? { ...current, state: "rejected" } : null);
+          setXaman((current) => {
+            if (!current) return null;
+            const next = { ...current, state: "rejected" as const };
+            archiveMint(next);
+            return next;
+          });
           return;
         }
         setXaman((current) => current
@@ -142,7 +204,7 @@ export function FundsSection() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [xamanUuid, xamanState, refresh, vault]);
+  }, [archiveMint, xamanUuid, xamanState, refresh, vault]);
 
   useEffect(() => {
     if (xamanState !== "signed" || !xaman || !vault || !vaultClient) return;
@@ -155,7 +217,12 @@ export function FundsSection() {
         if (!active) return;
         const expectedBalance = BigInt(xaman.balanceBefore) + BigInt(xaman.expectedNet);
         if (state.balance >= expectedBalance) {
-          setXaman((current) => current ? { ...current, state: "minted" } : null);
+          setXaman((current) => {
+            if (!current) return null;
+            const next = { ...current, state: "minted" as const };
+            archiveMint(next);
+            return next;
+          });
           await refresh(vault);
           return;
         }
@@ -169,7 +236,8 @@ export function FundsSection() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [refresh, vault, vaultClient, xaman, xamanState]);
+  }, [archiveMint, refresh, vault, vaultClient, xaman, xamanState]);
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -284,6 +352,7 @@ export function FundsSection() {
                     balanceBefore: (snap?.state.balance ?? 0n).toString(),
                     expectedNet: net.toString(),
                     state: "sign",
+                    createdAt: Date.now(),
                   });
                   return {
                     kind: "done",
@@ -313,6 +382,18 @@ export function FundsSection() {
                         ? xamanFailureDetail(xaman.state)
                         : "The destination and 32-byte vault memo were constructed from live AssetManager state."}
                   </span>
+                  {xaman.state === "signed" ? (
+                    <span className="text-xs text-muted-foreground">
+                      Waiting {formatElapsed(now - (xaman.signedAt ?? xaman.createdAt ?? now))} so far.
+                      This normally takes a few minutes. You can leave or reload this page — the
+                      mint continues on its own and this card restores itself.
+                    </span>
+                  ) : xaman.state === "sign" || xaman.state === "waiting" ? (
+                    <span className="text-xs text-muted-foreground">
+                      Created {formatElapsed(now - (xaman.createdAt ?? now))} ago. Reloading this
+                      page keeps the request.
+                    </span>
+                  ) : null}
                   <EvidenceTimeline steps={xamanSteps(xaman)} />
                   {xaman.state === "sign" || xaman.state === "waiting" ? (
                     <Button nativeButton={false} render={<a href={xaman.deeplink} target="_blank" rel="noreferrer" />}>
@@ -337,6 +418,38 @@ export function FundsSection() {
                   ) : null}
                 </AlertDescription>
               </Alert>
+            ) : null}
+
+            {history.filter((entry) => entry.uuid !== xaman?.uuid).length > 0 ? (
+              <div className="flex flex-col gap-2 rounded-lg border p-4">
+                <h3 className="text-sm font-medium">Earlier direct mints</h3>
+                <ul className="flex flex-col gap-2">
+                  {history
+                    .filter((entry) => entry.uuid !== xaman?.uuid)
+                    .map((entry) => (
+                      <li key={entry.uuid} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+                        <span className={entry.state === "minted" ? "text-foreground" : "text-destructive"}>
+                          {entry.state === "minted"
+                            ? `${formatFxrp(BigInt(entry.expectedNet))} FXRP minted`
+                            : (xamanFailureTitle(entry.state) ?? "Did not complete")}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {new Date(entry.finishedAt).toLocaleString()}
+                        </span>
+                        {entry.transaction ? (
+                          <a
+                            className="underline underline-offset-2"
+                            href={`https://testnet.xrpl.org/transactions/${entry.transaction}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            XRPL transaction
+                          </a>
+                        ) : null}
+                      </li>
+                    ))}
+                </ul>
+              </div>
             ) : null}
 
             <code className="rounded bg-muted px-3 py-2 font-mono text-xs break-all">
@@ -409,6 +522,19 @@ function isXamanTerminal(state: XamanState | undefined): boolean {
   return state === "signed" || state === "minted" || Boolean(xamanFailureDetail(state));
 }
 
+/** Terminal for the mint as a whole, unlike {@link isXamanTerminal}, which
+ * also stops polling at "signed" while the FXRP mint is still in flight. */
+function isXamanFinished(state: XamanState | undefined): boolean {
+  return state === "minted" || Boolean(xamanFailureDetail(state));
+}
+
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 1) return `${seconds}s`;
+  return `${minutes}m ${seconds % 60}s`;
+}
+
 function xamanFailureTitle(state: XamanState): string | null {
   if (state === "rejected") return "Xaman request rejected";
   if (state === "expired") return "Xaman request expired";
@@ -427,6 +553,38 @@ function xamanFailureDetail(state: XamanState | undefined): string | null {
 
 function xamanStorageKey(vault: string): string {
   return `serein:direct-mint:${vault.toLowerCase()}`;
+}
+
+function historyStorageKey(vault: string): string {
+  return `serein:direct-mint-history:${vault.toLowerCase()}`;
+}
+
+function readStoredHistory(vault: string): XamanHistoryEntry[] {
+  try {
+    const stored = localStorage.getItem(historyStorageKey(vault));
+    if (!stored) return [];
+    const value = JSON.parse(stored) as unknown;
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((entry): entry is XamanHistoryEntry =>
+        Boolean(entry)
+        && typeof (entry as XamanHistoryEntry).uuid === "string"
+        && typeof (entry as XamanHistoryEntry).expectedNet === "string"
+        && /^[1-9]\d*$/.test((entry as XamanHistoryEntry).expectedNet)
+        && typeof (entry as XamanHistoryEntry).finishedAt === "number"
+        && isStoredXamanState((entry as XamanHistoryEntry).state))
+      .slice(0, MINT_HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredHistory(vault: string, entries: XamanHistoryEntry[]): void {
+  try {
+    localStorage.setItem(historyStorageKey(vault), JSON.stringify(entries));
+  } catch {
+    // History is a convenience; losing it must never break a mint.
+  }
 }
 
 function readStoredXaman(vault: string): XamanRequest | null {
