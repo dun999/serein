@@ -101,13 +101,18 @@ function ProofArt(props: ArtProps) {
   );
 }
 
-/** FTSOv2: a price, moving. The feed the caps are measured against. */
+/** FTSOv2: a price, moving. The feed the caps are measured against.
+ *
+ * The head is a square bracket, so it is symmetric about 45 degrees: the
+ * closing segment has to run at exactly 45 degrees or the head reads as
+ * rotated against its own shaft. The glyph is also centred on the 24-unit
+ * box so it sits level with the other three. */
 function FeedArt(props: ArtProps) {
   return (
     <Frame {...props}>
-      <path d="M3 17.5l5-5 3.5 3.5 4-6L21 6" />
-      <path d="M21 6h-4.5M21 6v4.5" />
-      <path d="M3 21h18" opacity={0.4} />
+      <path d="M3.5 14L8.5 10L12 13L20 5" />
+      <path d="M20 5h-4.5M20 5v4.5" />
+      <path d="M3 19h18" opacity={0.4} />
     </Frame>
   );
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Logo } from "@/components/site/logo";
-import { COSTON2, VAULT_FACTORY_ADDRESS, explorerAddress } from "@/lib/chain";
+import { COSTON2, DOCS_URL, SDK_URL, VAULT_FACTORY_ADDRESS, explorerAddress } from "@/lib/chain";
 
 export function SiteFooter() {
   return (
@@ -17,8 +17,12 @@ export function SiteFooter() {
 
         <div className="flex flex-col gap-4 text-sm md:items-end">
           <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <FooterLink href="#how">How it works</FooterLink>
-            <FooterLink href="#evidence">Evidence</FooterLink>
+            <FooterLink href={DOCS_URL} external>
+              Docs
+            </FooterLink>
+            <FooterLink href={SDK_URL} external>
+              Covenant SDK
+            </FooterLink>
             <FooterLink href="/app">Open app</FooterLink>
             {VAULT_FACTORY_ADDRESS !== "0x0000000000000000000000000000000000000000" ? (
               <FooterLink href={explorerAddress(VAULT_FACTORY_ADDRESS)} external>
