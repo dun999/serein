@@ -190,12 +190,18 @@ export class FccClient {
     const interval = this.options.pollIntervalMs ?? 1_500;
     const started = Date.now();
     const url = `${this.options.proxyUrl.replace(/\/$/, "")}/action/result/${instructionId}`;
+    // Every poll is a cross-origin browser read, so a proxy that answers curl
+    // can still fail here (CORS, DNS, TLS). Keep the transport failure instead
+    // of reporting only that time ran out.
+    let transportError: unknown;
 
     while (Date.now() - started < timeout) {
       let response: Response;
       try {
         response = await this.fetchImpl(url, { signal: AbortSignal.timeout(Math.min(interval * 4, 8_000)) });
+        transportError = undefined;
       } catch (error) {
+        transportError = error;
         if (Date.now() - started >= timeout) break;
         await wait(interval);
         continue;
@@ -223,6 +229,10 @@ export class FccClient {
       }
       const decoded = decodeResultData(result.data);
       return decoded;
+    }
+    if (transportError) {
+      const detail = transportError instanceof Error ? transportError.message : String(transportError);
+      throw new CovenantError(`FCC proxy at ${this.options.proxyUrl} was unreachable from this browser: ${detail}`);
     }
     throw new CovenantError("FCC authorization timed out");
   }
