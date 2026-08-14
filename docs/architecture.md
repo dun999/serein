@@ -10,6 +10,22 @@
 | Vault | Enforce public invariants, registry, price epoch, signature, nonce, timelock, payout | Learn or classify the encrypted rules |
 | FAssets/FDC | Move value between XRPL and Flare with payment proofs | Override vault authorization |
 
+## Flare service resolution
+
+Flare-owned addresses are never hard-coded or supplied by the deployer. On
+construction each vault reads Flare's own `ContractRegistry` (the constant
+address `0xaD67FE66...` present on every Flare network) for `FtsoV2` and
+`AssetManagerFXRP`, then calls `assetManager.fAsset()` for FXRP. The same
+registry is the SDK's trust anchor: `packages/sdk/src/flare-registry.ts`
+wraps the official `@flarenetwork/flare-tx-sdk` (`Network.COSTON2` and
+`Constants.COSTON2.address_FlareContractRegistry`), and
+`resolveFlareContracts()` / `readXrpUsdPrice()` re-derive the same addresses
+through the SDK's registry resolution (`getFlareContracts()`,
+`invokeContractCallOnC("FtsoV2", ...)`) and read the FTSOv2 XRP/USD feed.
+If the registry values ever drift from the manifest, the deployment-health
+check reports it, so a Flare-side service upgrade never requires re-deploying
+the factory or vaults.
+
 ## Policy envelope v1
 
 ```text

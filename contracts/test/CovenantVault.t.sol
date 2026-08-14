@@ -5,12 +5,51 @@ import {Test} from "forge-std/Test.sol";
 
 import {CovenantVault} from "../src/CovenantVault.sol";
 import {CovenantVaultFactory} from "../src/CovenantVaultFactory.sol";
-import {IAssetManager} from "../src/interfaces/IAssetManager.sol";
-import {IERC20} from "../src/interfaces/IERC20.sol";
-import {IFtsoV2} from "../src/interfaces/IFtsoV2.sol";
 import {ITeeMachineRegistry} from "../src/interfaces/ITeeMachineRegistry.sol";
 
-contract VaultMockFxrp is IERC20 {
+/// @notice Test double for Flare's contract registry, which is at the same
+/// address on every Flare network. Foundry cannot deploy to a chosen address,
+/// so the mock is etched at that constant and its two mapping slots are copied
+/// with vm.store.
+contract MockFlareContractRegistry {
+    mapping(bytes32 => address) private byHash;
+
+    function set(string memory name, address target) external {
+        byHash[keccak256(abi.encode(name))] = target;
+    }
+
+    function getContractAddressByHash(bytes32 hash) external view returns (address) {
+        return byHash[hash];
+    }
+
+    function getContractAddressByName(string calldata name) external view returns (address) {
+        return byHash[keccak256(abi.encode(name))];
+    }
+
+    function getContractAddressesByName(string[] calldata names)
+        external
+        view
+        returns (address[] memory out)
+    {
+        out = new address[](names.length);
+        for (uint256 i = 0; i < names.length; ++i) out[i] = byHash[keccak256(abi.encode(names[i]))];
+    }
+
+    function getContractAddressesByHash(bytes32[] calldata hashes)
+        external
+        view
+        returns (address[] memory out)
+    {
+        out = new address[](hashes.length);
+        for (uint256 i = 0; i < hashes.length; ++i) out[i] = byHash[hashes[i]];
+    }
+
+    function getAllContracts() external pure returns (string[] memory, address[] memory) {
+        return (new string[](0), new address[](0));
+    }
+}
+
+contract VaultMockFxrp {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
@@ -46,7 +85,7 @@ contract VaultMockFxrp is IERC20 {
     }
 }
 
-contract VaultMockFtso is IFtsoV2 {
+contract VaultMockFtso {
     uint256 public value = 500_000;
     int8 public decimals = 6;
     uint64 public timestamp;
@@ -94,7 +133,7 @@ contract VaultMockRegistry is ITeeMachineRegistry {
     }
 }
 
-contract VaultMockAssetManager is IAssetManager {
+contract VaultMockAssetManager {
     VaultMockFxrp public immutable token;
     string public lastPayout;
     uint256 public lastAmount;
@@ -104,11 +143,15 @@ contract VaultMockAssetManager is IAssetManager {
         token = token_;
     }
 
+    function fAsset() external view returns (address) {
+        return address(token);
+    }
+
     function setMaximumRedeemAmount(uint256 amount) external {
         maximumRedeemAmount = amount;
     }
 
-    function redeemAmount(uint256 requested, string calldata payout, address)
+    function redeemAmount(uint256 requested, string calldata payout, address payable)
         external
         payable
         returns (uint256 redeemedAmount)
@@ -140,6 +183,8 @@ contract CovenantVaultTest is Test {
     string internal constant PAYOUT = "rKGAv7Z5LEf7vrdSGteLK46kC1wiqp1Z7N";
     uint32 internal constant TIMELOCK = 1 days;
     uint256 internal constant EXTENSION_ID = 0x1002a;
+    address internal constant FLARE_CONTRACT_REGISTRY_ADDRESS =
+        0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019;
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -150,7 +195,8 @@ contract CovenantVaultTest is Test {
         registry.setStatus(tee, 2);
         registry.setExtensionId(tee, EXTENSION_ID);
         assetManager = new VaultMockAssetManager(fxrp);
-        factory = new CovenantVaultFactory(fxrp, ftso, registry, assetManager, EXTENSION_ID);
+        _etchFlareContractRegistry();
+        factory = new CovenantVaultFactory(registry, EXTENSION_ID);
 
         vm.prank(owner);
         address deployed = factory.createVault(tee, guardian, TIMELOCK, PAYOUT);
@@ -159,6 +205,28 @@ contract CovenantVaultTest is Test {
         vm.prank(owner);
         vault.initializePolicy(keccak256("private-policy"), new bytes(160));
         fxrp.mint(address(vault), 1_000e6);
+    }
+
+    /// @notice Places a mock registry at Flare's constant registry address and
+    /// seeds the FtsoV2 and AssetManagerFXRP entries. The mapping lives in
+    /// slot 0, so entry `hash` sits at keccak256(abi.encode(hash, 0)).
+    function _etchFlareContractRegistry() internal {
+        MockFlareContractRegistry flareRegistry = new MockFlareContractRegistry();
+        vm.etch(FLARE_CONTRACT_REGISTRY_ADDRESS, address(flareRegistry).code);
+        vm.store(
+            FLARE_CONTRACT_REGISTRY_ADDRESS,
+            _registrySlot("FtsoV2"),
+            bytes32(uint256(uint160(address(ftso))))
+        );
+        vm.store(
+            FLARE_CONTRACT_REGISTRY_ADDRESS,
+            _registrySlot("AssetManagerFXRP"),
+            bytes32(uint256(uint160(address(assetManager))))
+        );
+    }
+
+    function _registrySlot(string memory name) internal pure returns (bytes32) {
+        return bytes32(uint256(keccak256(abi.encode(keccak256(abi.encode(name)), uint256(0)))));
     }
 
     function _authorization(
@@ -228,7 +296,13 @@ contract CovenantVaultTest is Test {
 
     function test_FactoryRejectsReservedSystemExtensionId() public {
         vm.expectRevert(abi.encodeWithSelector(CovenantVaultFactory.InvalidExtensionId.selector, 1));
-        new CovenantVaultFactory(fxrp, ftso, registry, assetManager, 1);
+        new CovenantVaultFactory(registry, 1);
+    }
+
+    function test_FlareDependenciesResolvedFromFlareContractRegistry() public view {
+        assertEq(address(vault.ftso()), address(ftso));
+        assertEq(address(vault.assetManager()), address(assetManager));
+        assertEq(address(vault.fxrp()), address(fxrp));
     }
 
     function test_PolicyCanInitializeAfterUnsolicitedDirectMint() public {

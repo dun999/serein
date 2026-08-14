@@ -18,7 +18,7 @@ import { useTreasury } from "@/lib/treasury-provider";
 
 export function OverviewSection() {
   const { vault, vaults, snap, adopt, busy, run } = useTreasury();
-  const { vaultClient } = useCovenant();
+  const { vaultClient, xrpUsd } = useCovenant();
   const policy = snap?.policy;
   const locked = snap?.state.status === "locked";
   const [preparedWithdraw, setPreparedWithdraw] = useState<{
@@ -46,7 +46,7 @@ export function OverviewSection() {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          <div className="grid gap-6 sm:grid-cols-3">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <Stat
               label="Protected balance"
               value={snap ? `${formatFxrp(snap.state.balance)} FXRP` : "—"}
@@ -61,6 +61,11 @@ export function OverviewSection() {
               label="Passkey above"
               value={policy ? formatUsd(BigInt(policy.stepUpThresholdUsd)) : "Confidential"}
               hint="user verification required"
+            />
+            <Stat
+              label="XRP/USD"
+              value={xrpUsd ? `$${xrpUsd.priceUsd.toFixed(4)}` : "—"}
+              hint="live · Flare FTSOv2"
             />
           </div>
 

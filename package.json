@@ -17,5 +17,9 @@
     "deployment:verify": "node scripts/verify-public-deployment.mjs",
     "env:migrate": "node scripts/migrate-local-env.mjs",
     "release:verify": "pnpm secret:scan && pnpm verify && pnpm build && pnpm deployment:verify"
+  },
+  "devDependencies": {
+    "@flarenetwork/flare-periphery-contracts": "0.1.52",
+    "@openzeppelin/contracts": "^4.9.6"
   }
 }

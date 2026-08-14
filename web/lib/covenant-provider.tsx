@@ -1,6 +1,14 @@
 "use client";
 
-import { FccClient, PrivateVaultClient } from "@covenant/sdk";
+import {
+  createFlareNetwork,
+  FccClient,
+  PrivateVaultClient,
+  readXrpUsdPrice,
+  resolveFlareContracts,
+  type FlareContracts,
+  type XrpUsdPrice,
+} from "@covenant/sdk";
 import {
   createContext,
   useCallback,
@@ -24,6 +32,7 @@ import {
   ASSET_MANAGER_ADDRESS,
   FCC_PROXY_URL,
   FCC_TEE_ADDRESS,
+  FTSO_V2_ADDRESS,
   FXRP_ADDRESS,
   INSTRUCTION_SENDER_ADDRESS,
   PRIVATE_VAULT_CONFIGURED,
@@ -41,6 +50,7 @@ interface CovenantContext {
   teeAddress: Address;
   deploymentReady: boolean;
   error: string | null;
+  xrpUsd: XrpUsdPrice | null;
 }
 
 const Ctx = createContext<CovenantContext | null>(null);
@@ -62,6 +72,58 @@ export function CovenantProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // The official Flare SDK network is the trust anchor for Flare-owned
+  // addresses. It is bound to the deployment RPC so the registry, FTSO feed,
+  // and health checks observe the same network as the manifest.
+  const flareNetwork = useMemo(() => createFlareNetwork(COSTON2.rpcUrl), []);
+
+  // Flare's own registry is the source of truth for Flare-owned addresses. The
+  // manifest seeds the first render so nothing waits on an RPC round trip, and
+  // it stays the fallback when the registry cannot be reached.
+  const [flare, setFlare] = useState<FlareContracts>({
+    ftsoV2: FTSO_V2_ADDRESS,
+    assetManager: ASSET_MANAGER_ADDRESS,
+    fxrp: FXRP_ADDRESS,
+  });
+
+  const [xrpUsd, setXrpUsd] = useState<XrpUsdPrice | null>(null);
+
+  useEffect(() => {
+    if (!PRIVATE_VAULT_CONFIGURED) return;
+    let cancelled = false;
+    const refresh = () =>
+      void (async () => {
+        try {
+          const price = await readXrpUsdPrice(flareNetwork);
+          if (!cancelled) setXrpUsd(price);
+        } catch {
+          // Feed unavailable; the UI falls back to "—".
+        }
+      })();
+    refresh();
+    const timer = setInterval(refresh, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [flareNetwork]);
+
+  useEffect(() => {
+    if (!PRIVATE_VAULT_CONFIGURED) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resolved = await resolveFlareContracts(flareNetwork);
+        if (!cancelled) setFlare(resolved);
+      } catch {
+        // Keep the manifest addresses; the deployment health check reports drift.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [flareNetwork]);
+
   const vaultClient = useMemo(() => {
     const provider = injected();
     if (!provider || !address || !PRIVATE_VAULT_CONFIGURED) return null;
@@ -78,13 +140,13 @@ export function CovenantProvider({ children }: { children: ReactNode }) {
     });
     return new PrivateVaultClient({
       factory: VAULT_FACTORY_ADDRESS,
-      fxrp: FXRP_ADDRESS,
-      assetManager: ASSET_MANAGER_ADDRESS,
+      fxrp: flare.fxrp,
+      assetManager: flare.assetManager,
       publicClient: publicClient as never,
       walletClient: walletClient as never,
       fcc,
     });
-  }, [address, publicClient]);
+  }, [address, publicClient, flare]);
 
   const connect = useCallback(async () => {
     const provider = injected();
@@ -182,6 +244,7 @@ export function CovenantProvider({ children }: { children: ReactNode }) {
     teeAddress: FCC_TEE_ADDRESS,
     deploymentReady: PRIVATE_VAULT_CONFIGURED,
     error,
+    xrpUsd,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -2,19 +2,13 @@
 pragma solidity ^0.8.25;
 
 import {CovenantVault} from "./CovenantVault.sol";
-import {IAssetManager} from "./interfaces/IAssetManager.sol";
-import {IERC20} from "./interfaces/IERC20.sol";
-import {IFtsoV2} from "./interfaces/IFtsoV2.sol";
 import {ITeeMachineRegistry} from "./interfaces/ITeeMachineRegistry.sol";
 
 /// @title CovenantVaultFactory
 /// @notice Deploys discoverable, isolated Covenant vault accounts.
 contract CovenantVaultFactory {
     uint256 private constant FIRST_PUBLIC_EXTENSION_ID = 0x10000;
-    IERC20 public immutable fxrp;
-    IFtsoV2 public immutable ftso;
     ITeeMachineRegistry public immutable teeRegistry;
-    IAssetManager public immutable assetManager;
     uint256 public immutable extensionId;
 
     mapping(address owner => address[] vaults) private _vaultsOf;
@@ -34,21 +28,12 @@ contract CovenantVaultFactory {
     error InvalidExtensionId(uint256 supplied);
 
     constructor(
-        IERC20 _fxrp,
-        IFtsoV2 _ftso,
         ITeeMachineRegistry _teeRegistry,
-        IAssetManager _assetManager,
         uint256 _extensionId
     ) {
-        if (address(_fxrp).code.length == 0) revert InvalidDependency(address(_fxrp));
-        if (address(_ftso).code.length == 0) revert InvalidDependency(address(_ftso));
         if (address(_teeRegistry).code.length == 0) revert InvalidDependency(address(_teeRegistry));
-        if (address(_assetManager).code.length == 0) revert InvalidDependency(address(_assetManager));
         if (_extensionId < FIRST_PUBLIC_EXTENSION_ID) revert InvalidExtensionId(_extensionId);
-        fxrp = _fxrp;
-        ftso = _ftso;
         teeRegistry = _teeRegistry;
-        assetManager = _assetManager;
         extensionId = _extensionId;
     }
 
@@ -65,10 +50,7 @@ contract CovenantVaultFactory {
                 tee,
                 timelockSeconds,
                 xrplPayout,
-                fxrp,
-                ftso,
                 teeRegistry,
-                assetManager,
                 extensionId
             )
         );
@@ -98,10 +80,7 @@ contract CovenantVaultFactory {
                 tee,
                 timelockSeconds,
                 xrplPayout,
-                fxrp,
-                ftso,
                 teeRegistry,
-                assetManager,
                 extensionId
             )
         );

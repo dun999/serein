@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {IAssetManager} from "./interfaces/IAssetManager.sol";
-import {IERC20} from "./interfaces/IERC20.sol";
-import {IFtsoV2} from "./interfaces/IFtsoV2.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ContractRegistry} from "@flarenetwork/flare-periphery-contracts/coston2/ContractRegistry.sol";
+import {FtsoV2Interface} from "@flarenetwork/flare-periphery-contracts/coston2/FtsoV2Interface.sol";
+import {IAssetManager} from "@flarenetwork/flare-periphery-contracts/coston2/IAssetManager.sol";
 import {ITeeMachineRegistry} from "./interfaces/ITeeMachineRegistry.sol";
 
 /// @title CovenantVault
@@ -50,7 +51,7 @@ contract CovenantVault {
     }
 
     IERC20 public immutable fxrp;
-    IFtsoV2 public immutable ftso;
+    FtsoV2Interface public immutable ftso;
     ITeeMachineRegistry public immutable teeRegistry;
     IAssetManager public immutable assetManager;
     uint256 public immutable extensionId;
@@ -143,6 +144,7 @@ contract CovenantVault {
     error Reentrancy();
     error InvalidTimelock(uint32 supplied);
     error InvalidExtensionId(uint256 supplied);
+    error InvalidFlareDependency();
     error IncompleteRedemption(uint256 requested, uint256 redeemed);
     error VaultIsDestroyed();
 
@@ -184,10 +186,7 @@ contract CovenantVault {
         address _tee,
         uint32 _timelockSeconds,
         string memory _xrplPayout,
-        IERC20 _fxrp,
-        IFtsoV2 _ftso,
         ITeeMachineRegistry _teeRegistry,
-        IAssetManager _assetManager,
         uint256 _extensionId
     ) {
         if (_owner == address(0) || _tee == address(0)) revert ZeroAddress();
@@ -197,15 +196,25 @@ contract CovenantVault {
             revert InvalidTimelock(_timelockSeconds);
         }
 
+        // Flare-owned dependencies come from Flare's own contract registry
+        // rather than constructor-supplied addresses, so a Flare-side redeploy
+        // does not require re-deploying every vault. FXRP is deliberately not
+        // read from the registry: the FAsset token is not registered under its
+        // own name, and taking it from `assetManager.fAsset()` guarantees the
+        // token matches the asset manager we are about to call.
+        assetManager = ContractRegistry.getAssetManagerFXRP();
+        ftso = ContractRegistry.getFtsoV2();
+        if (address(assetManager) == address(0) || address(ftso) == address(0)) {
+            revert InvalidFlareDependency();
+        }
+        fxrp = IERC20(address(assetManager.fAsset()));
+
         owner = _owner;
         guardian = _guardian;
         tee = _tee;
         timelockSeconds = _timelockSeconds;
         xrplPayout = _xrplPayout;
-        fxrp = _fxrp;
-        ftso = _ftso;
         teeRegistry = _teeRegistry;
-        assetManager = _assetManager;
         extensionId = _extensionId;
         status = Status.ACTIVE;
 
@@ -377,7 +386,7 @@ contract CovenantVault {
         );
 
         if (!fxrp.approve(address(assetManager), amount)) revert TransferFailed();
-        redeemedAmount = assetManager.redeemAmount(amount, payout, address(0));
+        redeemedAmount = assetManager.redeemAmount(amount, payout, payable(address(0)));
         if (redeemedAmount != amount) revert IncompleteRedemption(amount, redeemedAmount);
         emit Redeemed(payout, amount, amountUsd, forNonce);
     }
@@ -631,7 +640,7 @@ contract CovenantVault {
         recoveryAt = 0;
 
         if (!fxrp.approve(address(assetManager), amount)) revert TransferFailed();
-        redeemedAmount = assetManager.redeemAmount(amount, xrplPayout, address(0));
+        redeemedAmount = assetManager.redeemAmount(amount, xrplPayout, payable(address(0)));
         if (redeemedAmount != amount) revert IncompleteRedemption(amount, redeemedAmount);
         emit RecoveryExecuted(xrplPayout, amount);
     }
