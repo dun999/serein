@@ -4,6 +4,7 @@
 * [The problem](the-problem.md)
 * [How Serein works](how-serein-works.md)
 * [Getting started](getting-started.md)
+* [What's next?](whats-next.md)
 
 ## Guides
 
