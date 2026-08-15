@@ -21,10 +21,21 @@ const requiredUrl = (name) => {
   return value.replace(/\/$/, "");
 };
 
+const vaultFactory = requiredAddress("NEXT_PUBLIC_VAULT_FACTORY_ADDRESS");
+
+// A factory swap must keep the outgoing address discoverable, because vaults
+// already created by it are only listed through their own factory. Dropping
+// the list here would hide every existing vault from the app without error.
+const legacyVaultFactories = [...(current.contracts.legacyVaultFactories ?? []), current.contracts.vaultFactory]
+  .filter((value, index, all) =>
+    value.toLowerCase() !== vaultFactory.toLowerCase()
+    && all.findIndex((other) => other.toLowerCase() === value.toLowerCase()) === index);
+
 const next = {
   ...current,
   contracts: {
-    vaultFactory: requiredAddress("NEXT_PUBLIC_VAULT_FACTORY_ADDRESS"),
+    vaultFactory,
+    legacyVaultFactories,
     instructionSender: requiredAddress("NEXT_PUBLIC_INSTRUCTION_SENDER_ADDRESS"),
     fxrp: requiredAddress("NEXT_PUBLIC_FXRP_ADDRESS"),
     assetManager: requiredAddress("NEXT_PUBLIC_ASSET_MANAGER_ADDRESS"),
