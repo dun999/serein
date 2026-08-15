@@ -29,24 +29,9 @@ export const vaultAbi = [
         "internalType": "string"
       },
       {
-        "name": "_fxrp",
-        "type": "address",
-        "internalType": "contract IERC20"
-      },
-      {
-        "name": "_ftso",
-        "type": "address",
-        "internalType": "contract IFtsoV2"
-      },
-      {
         "name": "_teeRegistry",
         "type": "address",
         "internalType": "contract ITeeMachineRegistry"
-      },
-      {
-        "name": "_assetManager",
-        "type": "address",
-        "internalType": "contract IAssetManager"
       },
       {
         "name": "_extensionId",
@@ -72,6 +57,19 @@ export const vaultAbi = [
   {
     "type": "function",
     "name": "MAX_PRICE_AGE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_PRICE_FUTURE_SKEW",
     "inputs": [],
     "outputs": [
       {
@@ -395,7 +393,7 @@ export const vaultAbi = [
       {
         "name": "",
         "type": "address",
-        "internalType": "contract IFtsoV2"
+        "internalType": "contract FtsoV2Interface"
       }
     ],
     "stateMutability": "view"
@@ -1546,6 +1544,11 @@ export const vaultAbi = [
   },
   {
     "type": "error",
+    "name": "InvalidFlareDependency",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidPolicy",
     "inputs": []
   },
@@ -1739,24 +1742,9 @@ export const vaultFactoryAbi = [
     "type": "constructor",
     "inputs": [
       {
-        "name": "_fxrp",
-        "type": "address",
-        "internalType": "contract IERC20"
-      },
-      {
-        "name": "_ftso",
-        "type": "address",
-        "internalType": "contract IFtsoV2"
-      },
-      {
         "name": "_teeRegistry",
         "type": "address",
         "internalType": "contract ITeeMachineRegistry"
-      },
-      {
-        "name": "_assetManager",
-        "type": "address",
-        "internalType": "contract IAssetManager"
       },
       {
         "name": "_extensionId",
@@ -1765,19 +1753,6 @@ export const vaultFactoryAbi = [
       }
     ],
     "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "assetManager",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IAssetManager"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1841,32 +1816,6 @@ export const vaultFactoryAbi = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "ftso",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IFtsoV2"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "fxrp",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IERC20"
       }
     ],
     "stateMutability": "view"

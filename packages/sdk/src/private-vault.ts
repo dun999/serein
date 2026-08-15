@@ -1,4 +1,5 @@
 import {
+  erc20Abi,
   parseEventLogs,
   concatHex,
   hexToBytes,
@@ -12,6 +13,7 @@ import {
 import { sha256 } from "@noble/hashes/sha2.js";
 
 import { FccClient, type FccAdminAuthorization, type FccAuthorization } from "./fcc.js";
+import { assetManagerAbi, machineManagerAbi } from "./flare-abi.js";
 import { vaultAbi, vaultFactoryAbi } from "./private-abi.js";
 import {
   VaultOperation,
@@ -332,68 +334,33 @@ export class PrivateVaultClient {
   }
 
   async approveFxrp(vault: Address, amount: bigint): Promise<Hex> {
-    const erc20ApproveAbi = [
-      {
-        type: "function",
-        name: "approve",
-        stateMutability: "nonpayable",
-        inputs: [
-          { name: "spender", type: "address" },
-          { name: "amount", type: "uint256" },
-        ],
-        outputs: [{ type: "bool" }],
-      },
-    ] as const;
-    return this.send(this.options.fxrp, erc20ApproveAbi, "approve", [vault, amount]);
+    return this.send(this.options.fxrp, erc20Abi, "approve", [vault, amount]);
   }
 
   async walletFxrpBalance(owner: Address): Promise<bigint> {
-    const erc20BalanceAbi = [
-      {
-        type: "function",
-        name: "balanceOf",
-        stateMutability: "view",
-        inputs: [{ name: "account", type: "address" }],
-        outputs: [{ type: "uint256" }],
-      },
-    ] as const;
     return this.options.publicClient.readContract({
       address: this.options.fxrp,
-      abi: erc20BalanceAbi,
+      abi: erc20Abi,
       functionName: "balanceOf",
       args: [owner],
     });
   }
 
   async directMintSettings(): Promise<DirectMintSettings> {
-    const abi = [
-      { type: "function", name: "directMintingPaymentAddress", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-      { type: "function", name: "getDirectMintingFeeBIPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-      { type: "function", name: "getDirectMintingMinimumFeeUBA", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-      { type: "function", name: "getDirectMintingExecutorFeeUBA", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-    ] as const;
+    const assetManager = this.options.assetManager;
     const [paymentAddress, feeBips, minimumFeeUba, executorFeeUba] = await Promise.all([
-      this.options.publicClient.readContract({ address: this.options.assetManager, abi, functionName: "directMintingPaymentAddress" }),
-      this.options.publicClient.readContract({ address: this.options.assetManager, abi, functionName: "getDirectMintingFeeBIPS" }),
-      this.options.publicClient.readContract({ address: this.options.assetManager, abi, functionName: "getDirectMintingMinimumFeeUBA" }),
-      this.options.publicClient.readContract({ address: this.options.assetManager, abi, functionName: "getDirectMintingExecutorFeeUBA" }),
+      this.options.publicClient.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "directMintingPaymentAddress" }),
+      this.options.publicClient.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingFeeBIPS" }),
+      this.options.publicClient.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingMinimumFeeUBA" }),
+      this.options.publicClient.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingExecutorFeeUBA" }),
     ]);
     return { paymentAddress, feeBips, minimumFeeUba, executorFeeUba };
   }
 
   async minimumRedeemAmount(): Promise<bigint> {
-    const abi = [
-      {
-        type: "function",
-        name: "minimumRedeemAmountUBA",
-        stateMutability: "view",
-        inputs: [],
-        outputs: [{ type: "uint256" }],
-      },
-    ] as const;
     return this.options.publicClient.readContract({
       address: this.options.assetManager,
-      abi,
+      abi: assetManagerAbi,
       functionName: "minimumRedeemAmountUBA",
     });
   }
@@ -553,27 +520,9 @@ export class PrivateVaultClient {
       abi: vaultFactoryAbi,
       functionName: "teeRegistry",
     });
-    const registryAbi = [
-      {
-        type: "function",
-        name: "getPublicKey",
-        stateMutability: "view",
-        inputs: [{ name: "_teeId", type: "address" }],
-        outputs: [
-          {
-            name: "",
-            type: "tuple",
-            components: [
-              { name: "x", type: "bytes32" },
-              { name: "y", type: "bytes32" },
-            ],
-          },
-        ],
-      },
-    ] as const;
     const key = await this.options.publicClient.readContract({
       address: teeRegistry,
-      abi: registryAbi,
+      abi: machineManagerAbi,
       functionName: "getPublicKey",
       args: [tee],
     });

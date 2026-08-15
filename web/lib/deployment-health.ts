@@ -1,3 +1,5 @@
+import { FLARE_CONTRACT_REGISTRY_ADDRESS, contractRegistryAbi, machineManagerAbi } from "@covenant/sdk";
+
 import type { PublicDeployment } from "@/lib/deployment";
 import { isDeploymentConfigured, ZERO_ADDRESS } from "@/lib/deployment";
 import {
@@ -5,53 +7,6 @@ import {
   encodeFunctionData,
 } from "viem";
 
-const teeRegistryAbi = [
-  {
-    type: "function",
-    name: "getTeeMachineStatus",
-    stateMutability: "view",
-    inputs: [{ name: "tee", type: "address" }],
-    outputs: [{ type: "uint8" }],
-  },
-  {
-    type: "function",
-    name: "getExtensionId",
-    stateMutability: "view",
-    inputs: [{ name: "tee", type: "address" }],
-    outputs: [{ type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "getTeeMachine",
-    stateMutability: "view",
-    inputs: [{ name: "tee", type: "address" }],
-    outputs: [{
-      type: "tuple",
-      components: [
-        { name: "teeId", type: "address" },
-        { name: "teeProxyId", type: "address" },
-        { name: "url", type: "string" },
-      ],
-    }],
-  },
-  {
-    type: "function",
-    name: "getActiveTeeMachines",
-    stateMutability: "view",
-    inputs: [{ name: "extensionId", type: "uint256" }],
-    outputs: [
-      { name: "teeIds", type: "address[]" },
-      { name: "urls", type: "string[]" },
-    ],
-  },
-  {
-    type: "function",
-    name: "getLastStatusChangeTs",
-    stateMutability: "view",
-    inputs: [{ name: "tee", type: "address" }],
-    outputs: [{ type: "uint256" }],
-  },
-] as const;
 
 const availabilityValiditySeconds = 6 * 60 * 60;
 
@@ -87,6 +42,7 @@ export interface DeploymentHealth {
     teeMachine: DeploymentCheck;
     fccAvailability: DeploymentCheck;
     fccProxy: DeploymentCheck;
+    flareRegistry: DeploymentCheck;
   };
 }
 
@@ -211,6 +167,11 @@ export async function checkDeploymentHealth(
     })
     .catch(() => fail("FCC machine registry state could not be verified"));
 
+  const registryPromise = retry(
+    () => checkFlareRegistry(deployment, fetchImpl, timeoutMs),
+    1,
+  ).catch(() => fail("Flare contract registry could not be read"));
+
   const availabilityPromise = retry(
     () => checkAvailability(deployment, fetchImpl, timeoutMs, checkedAt),
     1,
@@ -227,6 +188,7 @@ export async function checkDeploymentHealth(
     teeMachine,
     fccAvailability,
     fccProxy,
+    flareRegistry,
   ] = await Promise.all([
     chainPromise,
     codeCheck(deployment.contracts.vaultFactory, "Vault factory"),
@@ -238,6 +200,7 @@ export async function checkDeploymentHealth(
     teePromise,
     availabilityPromise,
     proxyPromise,
+    registryPromise,
   ]);
   const checks = {
     chain,
@@ -250,6 +213,7 @@ export async function checkDeploymentHealth(
     teeMachine,
     fccAvailability,
     fccProxy,
+    flareRegistry,
   };
   const ready = Object.values(checks).every((check) => check.state === "pass");
 
@@ -290,6 +254,7 @@ function skippedChecks(): DeploymentHealth["checks"] {
     teeMachine: skipped,
     fccAvailability: skip("FCC machine is not configured"),
     fccProxy: skip("FCC proxy is not configured"),
+    flareRegistry: skip("Deployment is not configured"),
   };
 }
 
@@ -336,7 +301,7 @@ async function contractRead(
   fetchImpl: typeof fetch,
   timeoutMs: number,
 ): Promise<unknown> {
-  const data = encodeFunctionData({ abi: teeRegistryAbi, functionName, args } as never);
+  const data = encodeFunctionData({ abi: machineManagerAbi, functionName, args } as never);
   const result = await rpc<`0x${string}`>(
     deployment.rpcUrl,
     "eth_call",
@@ -344,7 +309,47 @@ async function contractRead(
     fetchImpl,
     timeoutMs,
   );
-  return decodeFunctionResult({ abi: teeRegistryAbi, functionName, data: result } as never);
+  return decodeFunctionResult({ abi: machineManagerAbi, functionName, data: result } as never);
+}
+
+/**
+ * The app resolves Flare-owned addresses from Flare's registry at runtime and
+ * only falls back to the manifest. Comparing the two here turns a silent
+ * divergence — Flare redeploying a contract — into a visible failure.
+ */
+async function checkFlareRegistry(
+  deployment: PublicDeployment,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+): Promise<DeploymentCheck> {
+  const data = encodeFunctionData({
+    abi: contractRegistryAbi,
+    functionName: "getContractAddressesByName",
+    args: [["FtsoV2", "AssetManagerFXRP"]],
+  });
+  const result = await rpc<`0x${string}`>(
+    deployment.rpcUrl,
+    "eth_call",
+    [{ to: FLARE_CONTRACT_REGISTRY_ADDRESS, data }, "latest"],
+    fetchImpl,
+    timeoutMs,
+  );
+  const [ftsoV2, assetManager] = decodeFunctionResult({
+    abi: contractRegistryAbi,
+    functionName: "getContractAddressesByName",
+    data: result,
+  });
+
+  const drifted = [
+    ["FtsoV2", ftsoV2, deployment.contracts.ftsoV2],
+    ["AssetManagerFXRP", assetManager, deployment.contracts.assetManager],
+  ].filter(([, onChain, manifest]) =>
+    String(onChain).toLowerCase() !== String(manifest).toLowerCase());
+
+  if (drifted.length > 0) {
+    return fail(`Manifest is stale for ${drifted.map(([name]) => name).join(" and ")}`);
+  }
+  return pass("Flare registry addresses match the deployment manifest");
 }
 
 async function checkAvailability(

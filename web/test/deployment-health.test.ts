@@ -40,7 +40,34 @@ describe("deployment health", () => {
     expect(result.checks.teeMachine.detail).toContain("sole active");
     expect(result.checks.fccAvailability.state).toBe("pass");
     expect(result.checks.fccProxy.state).toBe("pass");
+    expect(result.checks.flareRegistry.state).toBe("pass");
     expect(result.deployment.fcc).not.toHaveProperty("apiSecret");
+  });
+
+  it("reports degraded when the manifest drifts from the Flare registry", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith("/info")) {
+        return Response.json({ machineData: { extensionId: deployment.fcc.extensionId } });
+      }
+      const request = JSON.parse(String(init?.body)) as RpcRequest;
+      const data = String(request.params?.[0]?.data);
+      if (
+        request.method === "eth_call"
+        && data.startsWith(toFunctionSelector("getContractAddressesByName(string[])"))
+      ) {
+        // Flare redeployed AssetManagerFXRP; the manifest still names the old one.
+        return Response.json({
+          result: encodeAbiParameters(
+            [{ type: "address[]" }],
+            [[deployment.contracts.ftsoV2, address("a")]],
+          ),
+        });
+      }
+      return Response.json({ result: healthyRpcResult(request) });
+    }) as unknown as typeof fetch;
+    const result = await checkDeploymentHealth(deployment, { fetchImpl, now: () => now });
+    expect(result.status).toBe("degraded");
+    expect(result.checks.flareRegistry.detail).toContain("AssetManagerFXRP");
   });
 
   it("reports degraded when one deployed address has no code", async () => {
@@ -84,6 +111,12 @@ describe("deployment health", () => {
 });
 
 function codeForTeeCall(data: string): `0x${string}` {
+  if (data.startsWith(toFunctionSelector("getContractAddressesByName(string[])"))) {
+    return encodeAbiParameters(
+      [{ type: "address[]" }],
+      [[deployment.contracts.ftsoV2, deployment.contracts.assetManager]],
+    );
+  }
   if (data.startsWith(toFunctionSelector("getTeeMachineStatus(address)"))) {
     return encodeAbiParameters([{ type: "uint8" }], [2]);
   }
