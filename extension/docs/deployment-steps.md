@@ -120,13 +120,37 @@ Complete every product flow through the UI: successful payment, named refusal,
 direct mint, and redemption. Record the verified explorer links with the
 deployment release.
 
+## Renewing the availability check
+
+The availability check expires roughly six hours after it is accepted, and
+nothing renews it on its own. Once it lapses the machine still reads as status
+`2`, but `toProduction` reverts with `InvalidTeeStatus` and
+`/api/status` reports `fccAvailability` as expired. The registry only accepts a
+fresh proof from a paused machine, and the proof must be minted after the
+pause, so renewal is `pause` followed by `Rap`:
+
+```bash
+cd tools
+go run ./cmd/renew-availability \
+  -a ../config/coston2/deployed-addresses.json \
+  -c "$CHAIN_URL" -p "$EXT_PROXY_URL" -h "$EXT_PROXY_URL" -ep "$NORMAL_PROXY_URL"
+```
+
+The tool exits without touching the machine while more than `-min-remaining`
+(default two hours) of validity is left, so it is safe to run on a short timer.
+The Coston2 deployment runs it hourly on the FCC host as the `fcc-renew.timer`
+systemd user unit; `journalctl --user -u fcc-renew` shows each decision.
+Renewal pauses the machine for a few seconds, during which it cannot be
+dispatched to.
+
 ## Operational traps
 
 - A workload relaunch creates a new in-memory machine identity. Pause stale
   active machines after registering the replacement, or dispatch selection can
   send instructions to the stale identity. Keep one active machine per URL.
 - A machine must be status `2` (Production), have a registered `teeId`, and
-  retain a fresh availability check (currently less than six hours old).
+  retain a fresh availability check (currently less than six hours old). See
+  [Renewing the availability check](#renewing-the-availability-check).
 - The registered URL must be stable public HTTPS with a valid certificate;
   provider source addresses cannot be globally allowlisted.
 - Environment variables outside the image's launch-policy label abort a
