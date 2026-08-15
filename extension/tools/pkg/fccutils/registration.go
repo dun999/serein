@@ -389,6 +389,27 @@ func ToProduction(s *support.Support, toProductionProof *machinemanager.ITeeAvai
 	return nil
 }
 
+// PauseTeeMachine moves a machine to Paused. The registry rejects a fresh
+// availability proof for a machine that is still Production, so renewing an
+// expired availability check has to pause first.
+func PauseTeeMachine(s *support.Support, teeID common.Address) error {
+	opts, err := bind.NewKeyedTransactorWithChainID(s.Prv, s.ChainID)
+	if err != nil {
+		return errors.Errorf("%s", err)
+	}
+
+	tx, err := s.TeeMachineRegistry.Pause(opts, teeID)
+	if err != nil {
+		return errors.Errorf("%s", err)
+	}
+	if _, err = support.CheckTx(tx, s.ChainClient); err != nil {
+		return errors.Errorf("%s", err)
+	}
+
+	logger.Infof("tee machine paused: %s", teeID.Hex())
+	return nil
+}
+
 // StringToBytes32 packs an ASCII string into a bytes32, left-aligned and
 // zero-padded on the right. Errors if the string exceeds 32 bytes.
 func StringToBytes32(s string) ([32]byte, error) {

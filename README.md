@@ -163,7 +163,7 @@ vault and which devices can approve sensitive actions.
 | `contracts/src/CovenantVaultFactory.sol` | Creates and lists vaults for each owner |
 | `extension/contracts/InstructionSender.sol` | Records confidential approval requests on Flare |
 | `extension/go/internal/privatevault` | Opens private rules, checks requests, verifies passkeys, and creates approvals |
-| `packages/sdk/src` | Shared vault, passkey, FAssets, and confidential-service client code |
+| `packages/sdk/src` | Shared vault, passkey, FAssets, and confidential-service client code. Flare-owned addresses and the XRP/USD feed come from the official [`@flarenetwork/flare-tx-sdk`](https://dev.flare.network/network/flare-tx-sdk), never from hard-coded values |
 | `web` | The Serein website and wallet experience |
 
 Some internal contract and package names still use `Covenant`, the project's
@@ -251,9 +251,10 @@ forge script contracts/script/DeployPrivateVault.s.sol \
 
 ### 3. Configure and build the website
 
-Add the deployed factory, instruction sender, confidential machine, proxy,
-FXRP, FAssets manager, price feed, and machine registry addresses to
-`.env.local`, then run:
+Add the deployed factory, instruction sender, confidential machine, proxy, and
+machine registry addresses to `.env.local`. FXRP, the FAssets manager, and the
+price feed are resolved from Flare's on-chain contract registry by the vault
+and the SDK, so no addresses are needed for those, then run:
 
 ```bash
 pnpm deployment:update
@@ -278,3 +279,17 @@ still protects active vaults.
 
 Serein currently uses testnet assets. Never send mainnet XRP through the
 current deployment.
+
+## Flare SDK integration
+
+Serein uses two official Flare packages as the single source of truth for
+Flare-owned addresses and on-chain reads:
+
+| Layer | Package | Role |
+| --- | --- | --- |
+| **Solidity** | `@flarenetwork/flare-periphery-contracts` | Vault constructor resolves `FtsoV2`, `AssetManagerFXRP`, and FXRP from Flare's `ContractRegistry` on-chain; no deploy-time addresses needed for those services |
+| **TypeScript SDK** | `@flarenetwork/flare-tx-sdk` | `resolveFlareContracts()` and `readXrpUsdPrice()` re-derive the same addresses via `getFlareContracts()` / `invokeContractCallOnC()` and read the FTSOv2 XRP/USD feed |
+| **FCC** | `@flare-foundation/go-flare-common` + `tee-node` | Confidential policy engine runs in Flare's registered TEE |
+
+Because every Flare address is resolved from the chain, a Flare-side service
+upgrade never requires re-deploying the factory or vaults.
