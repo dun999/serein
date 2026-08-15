@@ -24,6 +24,15 @@ serein.103-150-93-190.sslip.io {
   import serein_app
 }
 
+# Branded entry point for the handbook. GitBook hosts the content but answers
+# 403 to any Host it has not been told about, so this cannot be a transparent
+# proxy. Making docs.serein.finance serve GitBook directly means registering it
+# as a custom domain in GitBook and repointing this record at them; until then
+# the redirect keeps one stable address to publish and link.
+docs.serein.finance {
+  redir https://disburse.gitbook.io/serein{uri} permanent
+}
+
 # Stable public FCC ingress. The sslip.io hostname resolves deterministically
 # to the VPS and avoids registering a rotating quick-tunnel URL on-chain.
 fcc.103-150-93-190.sslip.io {
