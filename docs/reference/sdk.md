@@ -1,6 +1,6 @@
-# Covenant SDK
+# SDK reference
 
-`@covenant/sdk` is the TypeScript library the Serein app is built on. Everything the website can do, the SDK can do — the site has no private endpoint of its own.
+Working code for `@covenant/sdk`. For what the library is and why it exists, start with [Covenant SDK](covenant-sdk.md).
 
 It has its own repository: [dun999/covenant-sdk](https://github.com/dun999/covenant-sdk).
 

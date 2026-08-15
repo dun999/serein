@@ -22,7 +22,8 @@
 
 ## Reference
 
-* [Covenant SDK](reference/sdk.md)
+* [Covenant SDK](reference/covenant-sdk.md)
+* [SDK reference](reference/sdk.md)
 * [Contracts and addresses](reference/contracts.md)
 * [Troubleshooting](reference/troubleshooting.md)
 * [Architecture](architecture.md)
